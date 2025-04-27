@@ -84,9 +84,25 @@ export default createStore({
     },
 
     UPDATE_EXPENSE(state, updatedExpense) {
-      const index = state.expenses.findIndex(e => e.id === updatedExpense.id)
-      if (index !== -1) {
-        state.expenses.splice(index, 1, updatedExpense)
+      try {
+        if (!updatedExpense?.id) {
+          console.error('Invalid expense in UPDATE_EXPENSE:', updatedExpense);
+          return;
+        }
+    
+        const index = state.expenses.findIndex(e => e.id === updatedExpense.id);
+        if (index === -1) {
+          console.warn('Expense not found for update:', updatedExpense.id);
+          return;
+        }
+        const mergedExpense = {
+          ...state.expenses[index], // Existing data
+          ...updatedExpense,       // Updated fields
+          id: updatedExpense.id    // Ensure ID is preserved
+        };
+        state.expenses.splice(index, 1, mergedExpense);
+      } catch (error) {
+        console.error('Error in UPDATE_EXPENSE:', error);
       }
     },
     DELETE_EXPENSE(state, id) {
@@ -189,21 +205,49 @@ export default createStore({
     };
   }
 },
-    async updateExpense({ commit }, { id, expenseData }) {
-      try {
-        const response = await axios.put(`/api/expenses/${id}`, expenseData, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` }
-        })
-        if (response.data.success) {
-          commit('UPDATE_EXPENSE', response.data.data)
-          return { success: true }
-        }
-        return { success: false, message: response.data.message }
-      } catch (error) {
-        console.error("Error updating expense:", error)
-        return { success: false, message: error.response?.data?.message || 'Failed to update expense' }
+async updateExpense({ commit }, { id, expenseData }) {
+  try {
+    if (!id) {
+      throw new Error('Missing expense ID');
+    }
+
+    const response = await axios.put(`/api/expenses/${id}`, expenseData, {
+      headers: { 
+        Authorization: `Bearer ${localStorage.getItem('jsontoken')}`,
+        'Content-Type': 'application/json'
       }
-    },
+    });
+
+    if (!response.data) {
+      throw new Error('Empty response from server');
+    }
+
+    if (response.data.success) {
+      // Ensure the updated expense has an ID
+      const updatedExpense = {
+        id: id, // Always include the ID from the parameters
+        ...expenseData, // Include all the updated fields
+        ...response.data.data // Include any additional fields from the response
+      };
+      commit('UPDATE_EXPENSE', updatedExpense);
+      return { 
+        success: true,
+        message: 'Expense updated successfully',
+        data: updatedExpense
+      };
+    }
+    return { 
+      success: false, 
+      message: response.data.message || 'Failed to update expense' 
+    };
+  } catch (error) {
+    console.error("Error updating expense:", error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || error.message || 'Failed to update expense'
+    };
+  }
+},
     async deleteExpense({ commit }, id) {
       try {
         const response = await axios.delete(`/api/expenses/${id}`, {
