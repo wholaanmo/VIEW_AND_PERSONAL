@@ -12,19 +12,28 @@ export default createStore({
     getExpenses: state => state.expenses,
     getPersonalBudgets: state => state.personalBudgets,
     getTotalAmount: state => {
-      return state.expenses.reduce((sum, expense) => sum + Number(expense.item_price), 0)
+      return state.expenses.reduce((sum, expense) => {
+        // Add null checks and default value
+        const price = Number(expense?.item_price) || 0;
+        return sum + price;
+      }, 0); // Start with 0 as initial value
     },
     getCurrentBudget: state => {
-      if (!state.personalBudgets || !Array.isArray(state.personalBudgets)) {
+      try {
+        if (!state.personalBudgets || !Array.isArray(state.personalBudgets)) {
+          return null;
+        }
+        
+        const currentBudget = state.personalBudgets.find(
+          b => b?.month_year === state.selectedMonthYear
+        );
+        
+        return currentBudget || null;
+      } catch (error) {
+        console.error("Error in getCurrentBudget:", error);
         return null;
       }
-      const currentBudget = state.personalBudgets.find(
-        b => b?.month_year === state.selectedMonthYear
-      );
-      
-      return currentBudget || null;
-    }, 
-    
+    },
     getAvailableMonths: () => {
       const months = []
       const date = new Date()
@@ -51,7 +60,22 @@ export default createStore({
       state.selectedMonthYear = monthYear
     },
     ADD_EXPENSE(state, expense) {
-      state.expenses.push(expense)
+      if (!expense || typeof expense !== 'object') {
+        console.error('Invalid expense:', expense);
+        return;
+      }
+      
+      // Ensure required fields exist
+      const validatedExpense = {
+        id: expense.id || Date.now().toString(),
+        item_price: Number(expense.item_price) || 0,
+        expense_type: expense.expense_type || 'Unknown',
+        item_name: expense.item_name || 'Unnamed',
+        expense_date: expense.expense_date || new Date().toISOString(),
+        personal_budget_id: expense.personal_budget_id || null
+      };
+      
+      state.expenses.push(validatedExpense);
     },
     UPDATE_EXPENSE(state, updatedExpense) {
       const index = state.expenses.findIndex(e => e.id === updatedExpense.id)
@@ -82,6 +106,7 @@ export default createStore({
         commit('SET_EXCHANGE_RATE', response.data.rates.PHP)
       } catch (error) {
         console.error("Error fetching exchange rate:", error)
+        return { success: false, message: error.message }
       }
     },
     async fetchExpenses({ commit }) {
@@ -90,9 +115,11 @@ export default createStore({
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` }
         })
         commit('SET_EXPENSES', response.data.data || [])
+        return { success: true }
       } catch (error) {
         console.error("Error fetching expenses:", error)
         commit('SET_EXPENSES', [])
+        return { success: false, message: error.message }
       }
     },
     async fetchPersonalBudgets({ commit }) {
@@ -101,24 +128,36 @@ export default createStore({
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` }
         })
         commit('SET_PERSONAL_BUDGETS', response.data.data || [])
+        return { success: true }
       } catch (error) {
         console.error("Error fetching budgets:", error)
         commit('SET_PERSONAL_BUDGETS', [])
+        return { success: false, message: error.message }
       }
     },
     async addExpense({ commit }, expenseData) {
       try {
-        const response = await axios.post('/api/expenses', expenseData, {
+        const response = await axios.post('/api/expenses', {
+          // Ensure all required fields are included
+          item_price: Number(expenseData.item_price) || 0,
+          expense_type: expenseData.expense_type || 'Other',
+          item_name: expenseData.item_name || '',
+          personal_budget_id: expenseData.personal_budget_id
+        }, {
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` }
-        })
-        if (response.data.success) {
-          commit('ADD_EXPENSE', response.data.data)
-          return { success: true }
+        });
+    
+        if (response.data?.success) {
+          commit('ADD_EXPENSE', response.data.data);
+          return { success: true, message: 'Expense added successfully' };
         }
-        return { success: false, message: response.data.message }
+        return { success: false, message: response.data?.message || 'Failed to add expense' };
       } catch (error) {
-        console.error("Error adding expense:", error)
-        return { success: false, message: error.response?.data?.message || 'Failed to add expense' }
+        console.error("Error adding expense:", error);
+        return { 
+          success: false, 
+          message: error.response?.data?.message || error.message || 'Failed to add expense'
+        };
       }
     },
     async updateExpense({ commit }, { id, expenseData }) {
@@ -176,7 +215,6 @@ export default createStore({
         };
       }
     },
-
     async updateBudget({ commit, state }, budgetData) {
       try {
         const currentBudget = state.personalBudgets.find(
@@ -186,11 +224,9 @@ export default createStore({
         if (!currentBudget) {
           return { success: false, message: 'No budget found for current month' };
         }
-        console.log('Updating budget with ID:', currentBudget.id);
-    
-        // Include ID in the URL
+        
         const response = await axios.put(
-          `/api/personal-budgets/${currentBudget.id}`, // ID in URL
+          `/api/personal-budgets/${currentBudget.id}`,
           {
             month_year: budgetData.month_year || currentBudget.month_year,
             budget_amount: budgetData.budget_amount
