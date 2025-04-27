@@ -106,7 +106,7 @@
            <input type="number" v-model.number="itemPrice" placeholder="Enter item price" required step="0.01" />
          </div>
  
-         <button class="btn" type="submit">{{ editId ? 'Save Changes' : 'Add Expense' }}</button>
+         <button class="btn" type="submit">{{ editId ? 'Update Expense' : 'Add Expense' }}</button>
          <div v-if="expenseSuccessMessage" class="expense-success-message" :class="{ hide: expenseHideMessage }">{{ expenseSuccessMessage }}</div>
       </form>
 
@@ -430,8 +430,9 @@
   try {
     if (!this.validateExpenseForm()) return;
 
-    if (!this.currentBudget.id) {
-      throw new Error('Please set a budget for this month before adding expenses');
+    if (!this.currentBudget?.id) {
+      this.showExpenseSuccessMessage('No valid budget selected');
+      return;
     }
 
     const expenseData = {
@@ -441,59 +442,69 @@
       personal_budget_id: this.currentBudget.id
     };
 
-    const action = this.editId ? 'updateExpense' : 'addExpense';
-    const payload = this.editId 
-      ? { id: this.editId, expenseData } 
-      : expenseData;
-      
-    const result = await this[action](payload).catch(error => {
-      throw new Error(error.message || 'Failed to save expense');
-    });
-    
-    if (result && result.success) {
-      this.showExpenseSuccessMessage(result.message || 'Expense saved successfully!');
-      this.resetForm();
-      await this.fetchExpenses();
+    console.log('Submitting expense:', expenseData); 
+    let result;
+    if (this.editId) {
+      // Editing existing expense
+      result = await this.updateExpense({
+        id: this.editId,
+        expenseData: expenseData
+      });
     } else {
-      throw new Error(result?.message || 'Failed to save expense');
+      // Adding new expense
+      result = await this.addExpense(expenseData);
+    }
+    
+    if (result.success) {
+      this.showExpenseSuccessMessage(result.message || (this.editId ? 'Expense updated!' : 'Expense added!'));
+      this.resetForm();
+      await this.fetchExpenses(); // Refresh the list
+    } else {
+      this.showExpenseSuccessMessage(result.message || 'Operation failed');
     }
   } catch (error) {
-    console.error('Expense submission error:', error);
-    this.showExpenseSuccessMessage(error.message || 'Failed to save expense');
+    console.error('Unexpected error in handleSubmit:', error);
+    this.showExpenseSuccessMessage('An unexpected error occurred');
   }
 },
-     validateExpenseForm() {
-      const price = Number(this.itemPrice);
-  if (isNaN(price) || price <= 0) {
+validateExpenseForm() {
+  // Check if required fields are filled
+  if (!this.itemPrice || isNaN(Number(this.itemPrice))) {
     this.showExpenseSuccessMessage('Please enter a valid amount');
     return false;
   }
-       if (!this.itemPrice) {
-         this.showExpenseSuccessMessage('Please enter an amount');
-         return false;
-       }
-       if (!this.expenseType) {
-         this.showExpenseSuccessMessage('Please select an expense type');
-         return false;
-       }
-       if (!this.itemName) {
-         this.showExpenseSuccessMessage('Please enter an item name');
-         return false;
-       }
-       if (!this.currentBudget || !this.currentBudget.id) {
-    this.showExpenseSuccessMessage('No valid budget set for this month');
-    console.warn('Current budget:', this.currentBudget);
+
+  if (!this.expenseType) {
+    this.showExpenseSuccessMessage('Please select an expense type');
     return false;
   }
+
+  if (!this.itemName?.trim()) {
+    this.showExpenseSuccessMessage('Please enter an item name');
+    return false;
+  }
+
+  if (!this.currentBudget?.id) {
+    this.showExpenseSuccessMessage('No valid budget selected');
+    return false;
+  }
+
   return true;
 },
  
-     editExpense(expense) {
-       this.editId = expense.id;
-       this.expenseType = expense.expense_type;
-       this.itemName = expense.item_name;
-       this.itemPrice = expense.item_price;
-     },
+editExpense(expense) {
+  if (!expense?.id) {
+    console.error('Invalid expense object:', expense);
+    return;
+  }
+  
+  this.editId = expense.id;
+  this.expenseType = expense.expense_type || '';
+  this.customExpenseType = this.expenseType === 'Other' ? expense.expense_type : '';
+  this.itemName = expense.item_name || '';
+  this.itemPrice = expense.item_price || '';
+  this.action = 'edit'; // Make sure this is set
+},
  
      async deleteExpenseHandler(id) {
        if (!confirm('Are you sure you want to delete this expense?')) return;
@@ -521,6 +532,7 @@
        this.itemName = '';
        this.itemPrice = '';
        this.editId = null;
+       this.action = 'add';
      },
  
      showBudgetSuccessMessage(message) {
