@@ -442,16 +442,20 @@
       personal_budget_id: this.currentBudget.id
     };
 
-    console.log('Submitting expense:', expenseData); 
+    console.log('Submitting expense:', { 
+      editId: this.editId,
+      data: expenseData 
+    });
     let result;
     if (this.editId) {
-      // Editing existing expense
+      if (!this.editId) {
+        throw new Error('Missing expense ID for update');
+      }
       result = await this.updateExpense({
         id: this.editId,
         expenseData: expenseData
       });
     } else {
-      // Adding new expense
       result = await this.addExpense(expenseData);
     }
     
@@ -463,8 +467,8 @@
       this.showExpenseSuccessMessage(result.message || 'Operation failed');
     }
   } catch (error) {
-    console.error('Unexpected error in handleSubmit:', error);
-    this.showExpenseSuccessMessage('An unexpected error occurred');
+    console.error('Error in handleSubmit:', error);
+    this.showExpenseSuccessMessage(error.message || 'Failed to save expense');
   }
 },
 validateExpenseForm() {
@@ -494,7 +498,8 @@ validateExpenseForm() {
  
 editExpense(expense) {
   if (!expense?.id) {
-    console.error('Invalid expense object:', expense);
+    console.error('Cannot edit - invalid expense:', expense);
+    this.showExpenseSuccessMessage('Cannot edit this expense');
     return;
   }
   
@@ -504,6 +509,8 @@ editExpense(expense) {
   this.itemName = expense.item_name || '';
   this.itemPrice = expense.item_price || '';
   this.action = 'edit'; // Make sure this is set
+
+  console.log('Editing expense ID:', this.editId);
 },
  
      async deleteExpenseHandler(id) {
