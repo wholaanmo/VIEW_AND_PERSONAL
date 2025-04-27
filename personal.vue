@@ -9,11 +9,25 @@
     <div class="top-row"> 
   <div class="budget-container">
     <div class="budget-content">
-      <div v-if="budgetSuccessMessage" class="budget-success-message" :class="{ hide: budgetHideMessage }">{{ budgetSuccessMessage }}</div>
+    <div v-if="budgetSuccessMessage" class="budget-success-message" :class="{ hide: budgetHideMessage }">
+      {{ budgetSuccessMessage }}
+    </div>
       <div class="budget-header"> <!--NEWWWWWWWWWW-->
       <h3>Monthly Budget</h3>
-      <button v-if="!hasExistingBudget" @click="showAddBudgetForm" class="add-budget-btn">Add Budget</button>
-      <button @click="showEditBudgetForm" class="edit-budget-btn">Edit Budget</button>
+      <button 
+        v-if="!hasExistingBudget && !isAddingBudget" 
+        @click="showAddBudgetForm" 
+        class="add-budget-btn"
+      >
+        Add Budget
+      </button>
+      <button 
+        v-if="hasExistingBudget && !isEditingBudget" 
+        @click="showEditBudgetForm" 
+        class="edit-budget-btn"
+      >
+        Edit Budget
+      </button>
     </div>
 
       <div v-if="!isAddingBudget && !isEditingBudget" class="budget-display">
@@ -33,9 +47,7 @@
         <div v-if="isAddingBudget" class="budget-form">
         <div class="form-group">
           <label for="monthYear">Month-Year:</label>
-          <select id="monthYear" v-model="selectedMonthYear">
-            <option v-for="month in availableMonths" :key="month" :value="month">{{ formatMonthYear(month) }}</option>
-          </select>
+          <span class="uneditable-month">{{ formatMonthYear(currentMonthYear) }}</span>
         </div>
         <div class="form-group">
           <label for="budgetAmount">Budget Amount (₱):</label>
@@ -45,17 +57,14 @@
         <div class="budget-form-buttons"> <!--NEWWWWWWWW-->
           <button class="budget-btn cancel-btn" @click="cancelBudgetForm">Cancel </button>
             <button class="budget-btn" @click="submitAddBudget">Set Budget</button>
-      
           </div>
     </div>
 
             <!-- FOR EDITING BUDGET -->
             <div v-if="isEditingBudget" class="budget-form">
           <div class="form-group">
-            <label for="editMonthYear">Month-Year:</label>
-            <select id="monthYear" v-model="selectedMonthYear" @change="handleMonthYearChange($event.target.value)"> <!--NEWWWW-->
-            <option v-for="month in availableMonths" :key="month" :value="month">{{ formatMonthYear(month) }}</option>
-            </select>
+            <label>Month-Year:</label>
+            <span class="uneditable-month">{{ formatMonthYear(safeSelectedMonthYear) }}</span>
           </div>
           <div class="form-group">
             <label for="editBudgetAmount">Budget Amount (₱):</label>
@@ -181,7 +190,8 @@
        expenseHideMessage: false,
        expenseSuccessTimeout: null,
        filterMonth: null,
-       error: null
+       error: null,
+       currentMonthYear: this.getCurrentMonthYear()
      };
    },
    
@@ -192,34 +202,30 @@
      selectedMonthYear: {
     get() {
       return this.$store.state.selectedMonthYear || 
-             this.defaultMonthYear;
+             this.currentMonthYear;
     },
     set(value) {
       this.$store.commit('SET_SELECTED_MONTH_YEAR', value);
     }
   },
 
-  defaultMonthYear() {
-    return `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-  },
+ // defaultMonthYear() {
+ //   return `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+ // },
 
   currentBudget() {
     const budget = this.$store.getters.getCurrentBudget;
   return budget || { 
     id: null, 
     budget_amount: 0, 
-    month_year: this.selectedMonthYear 
+    month_year: this.currentMonthYear 
   };
 },
      
      safeSelectedMonthYear() {
-       return this.selectedMonthYear || 
-              `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-     },
+      return this.selectedMonthYear || this.currentMonthYear;
+    },
  
-     availableMonths() {
-       return this.getAvailableMonths;
-     },
      totalAmount() {
        return this.getTotalAmount;
      },
@@ -243,7 +249,7 @@
     
     // Initialize selected month first
     if (!this.$store.state.selectedMonthYear) {
-      await this.setSelectedMonthYear(this.defaultMonthYear);
+      await this.setSelectedMonthYear(this.currentMonthYear);
     }
     
     // Then fetch data
@@ -276,6 +282,13 @@
        'updateBudget',
        'setSelectedMonthYear' 
      ]),
+
+     getCurrentMonthYear() {
+      const now = new Date();
+      const month = now.getMonth() + 1; // JavaScript months are 0-indexed
+      const year = now.getFullYear();
+      return `${year}-${month.toString().padStart(2, '0')}`;
+    },
  
      handleMonthYearChange(newMonthYear) {
        this.setSelectedMonthYear(newMonthYear);  
@@ -333,7 +346,7 @@
       }
 
       const budgetData = {
-        month_year: this.selectedMonthYear,
+        month_year: this.currentMonthYear,
         budget_amount: this.parseCurrency(this.budgetAmount)
       };
       
@@ -696,12 +709,12 @@ editExpense(expense) {
 }
 
 .budget-form .form-group {
-  margin: 0;
+  display: flex;
+  align-items: center;
 }
 
 .budget-form label {
-  color: white;
-  margin-bottom: 8px;
+  min-width: 100px;
 }
 
 .budget-form input, .budget-form select {
@@ -779,8 +792,8 @@ editExpense(expense) {
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
-  color: #ffea00;
   font-weight: bold;
+  min-width: 100px;
 }
  
  .content-wrapper {
