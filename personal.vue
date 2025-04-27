@@ -1,6 +1,11 @@
 <template>
   <navigation/>
   <div class="main-layout">
+    <div v-if="error" class="error-message">
+        An error occurred: {{ error }}
+        <button @click="resetError">Try Again</button>
+      </div>
+      <div v-else>
     <div class="top-row"> 
   <div class="budget-container">
     <div class="budget-content">
@@ -19,7 +24,7 @@
               </div>
               <div class="budget-amount-row">
                 <span class="budget-label">Budget Amount:</span>
-              <span class="budget-amount">{{ formatPHP(currentBudgetAmount) }}</span>
+              <span class="budget-amount">{{ formatPHP(currentBudget.budget_amount) }}</span>
             </div>
         </div>
         </div>
@@ -39,7 +44,7 @@
 
         <div class="budget-form-buttons"> <!--NEWWWWWWWW-->
           <button class="budget-btn cancel-btn" @click="cancelBudgetForm">Cancel </button>
-            <button class="budget-btn" @click="addBudget">Set Budget</button>
+            <button class="budget-btn" @click="submitAddBudget">Set Budget</button>
       
           </div>
     </div>
@@ -124,14 +129,14 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="expense in expenses" :key="expense.id">
-                <td>{{ expense.expense_type }}</td>
-                <td>{{ expense.item_name }}</td>
-                <td>{{ formatPHP(expense.item_price) }}</td>
-                <td>{{ formatDate(expense.expense_date) }}</td>
-                  <td class="actions">
-                  <button @click="editExpense(expense)" class="edit-btn">Edit</button>
-                  <button @click="deleteExpense(expense.id)" class="delete-btn">Delete</button>
+              <tr v-for="expense in expenses" :key="expense?.id">
+  <td>{{ expense?.expense_type || 'N/A' }}</td>
+  <td>{{ expense?.item_name || 'N/A' }}</td>
+  <td>{{ expense?.item_price ? formatPHP(expense.item_price) : '₱0.00' }}</td>
+  <td>{{ formatDate(expense?.expense_date) }}</td>
+  <td class="actions">
+    <button @click="editExpense(expense)" class="edit-btn">Edit</button>
+    <button @click="deleteExpense(expense?.id)" class="delete-btn">Delete</button>
                 </td>
                 </tr>
             </tbody>
@@ -143,6 +148,7 @@
       Total: <strong>₱{{ totalAmount.toFixed(2) }}</strong> (≈ {{ formatUsd(convertPhpToUsd(totalAmount)) }} USD)
      </div>
     </div>
+  </div>
   </div>
  </template>
  
@@ -175,6 +181,7 @@
        expenseHideMessage: false,
        expenseSuccessTimeout: null,
        filterMonth: null,
+       error: null
      };
    },
    
@@ -185,13 +192,25 @@
      selectedMonthYear: {
     get() {
       return this.$store.state.selectedMonthYear || 
-        `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+             this.defaultMonthYear;
     },
     set(value) {
-      this.$store.dispatch('setSelectedMonthYear', value);
-      this.fetchExpenses();
+      this.$store.commit('SET_SELECTED_MONTH_YEAR', value);
     }
   },
+
+  defaultMonthYear() {
+    return `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  },
+
+  currentBudget() {
+    const budget = this.$store.getters.getCurrentBudget;
+  return budget || { 
+    id: null, 
+    budget_amount: 0, 
+    month_year: this.selectedMonthYear 
+  };
+},
      
      safeSelectedMonthYear() {
        return this.selectedMonthYear || 
@@ -210,32 +229,39 @@
      },
  
      currentBudgetAmount() {
-       return this.getCurrentBudget?.budget_amount || 0;
-     },
+    return this.currentBudget.budget_amount;
+  },
      
-     hasExistingBudget() {
-       return !!this.getCurrentBudget;
-     }
+  hasExistingBudget() {
+    return !!this.currentBudget.id;
+  }
    },
 
    async mounted() {
-    try {
-    await this.fetchPersonalBudgets(); // Load budgets first
+  try {
+    this.isLoading = true;
     
-    // Now set default month if needed
-    if (!this.selectedMonthYear) {
-      const defaultMonthYear = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-      await this.setSelectedMonthYear(defaultMonthYear);
+    // Initialize selected month first
+    if (!this.$store.state.selectedMonthYear) {
+      await this.setSelectedMonthYear(this.defaultMonthYear);
     }
     
-    // Then load other data
+    // Then fetch data
     await Promise.all([
       this.fetchExchangeRate(),
+      this.fetchPersonalBudgets().then(() => {
+        // Ensure we have a valid budget state
+        if (!this.currentBudget.id) {
+          console.log('No budget found for current month');
+        }
+      }),
       this.fetchExpenses()
     ]);
   } catch (error) {
     console.error("Initialization error:", error);
-    this.showBudgetSuccessMessage('Failed to load initial data');
+    this.error = error.message || 'Failed to load data';
+  } finally {
+    this.isLoading = false;
   }
 },
    methods: {
@@ -300,48 +326,44 @@
      },
  
      // NEW BUDGET METHODS - ADD THESE
-     async addBudget() {
-       try {
-         if (!this.budgetAmount) {
-           throw new Error('Please enter a budget amount');
-         }
- 
-         const budgetData = {
-           month_year: this.selectedMonthYear,
-           budget_amount: this.parseCurrency(this.budgetAmount)
-         };
+     async submitAddBudget() {
+    try {
+      if (!this.budgetAmount) {
+        throw new Error('Please enter a budget amount');
+      }
 
-         console.log('Sending budget data:', budgetData); 
-         
-         const result = await this.$store.dispatch('addBudget', budgetData);
-         
-         if (result.success) {
-           this.showBudgetSuccessMessage(result.message || 'Budget added successfully!');
-           await this.fetchPersonalBudgets();
-           this.cancelBudgetForm();
-           console.log('Current budgets:', this.personalBudgets);
-         } else {
-           throw new Error(result.message);
-         }
-       } catch (error) {
-        console.error('Budget add error:', error);
-         this.showBudgetSuccessMessage(error.message || 'Failed to add budget');
-       }
-     },
+      const budgetData = {
+        month_year: this.selectedMonthYear,
+        budget_amount: this.parseCurrency(this.budgetAmount)
+      };
+      
+      const result = await this.addBudget(budgetData); // Now calls the Vuex action
+      
+      if (result.success) {
+        this.showBudgetSuccessMessage(result.message || 'Budget added successfully!');
+        await this.fetchPersonalBudgets();
+        this.cancelBudgetForm();
+      } else {
+        throw new Error(result.message);
+      }
+    } catch (error) {
+      console.error('Budget add error:', error);
+      this.showBudgetSuccessMessage(error.message || 'Failed to add budget');
+    }
+  },
  
      async updateBudget() {
        try {
-         const currentBudget = this.getCurrentBudget;
-         if (!currentBudget) {
-           throw new Error('No budget found for current month');
-         }
+        if (!this.currentBudget.id) {
+      throw new Error('No budget found for current month');
+    }
  
          if (!this.budgetAmount) {
            throw new Error('Please enter a budget amount');
          }
  
          const budgetData = {
-           id: currentBudget.id,
+           id: this.currentBudget.id,
            month_year: this.selectedMonthYear,
            budget_amount: this.parseCurrency(this.budgetAmount)
          };
@@ -405,41 +427,47 @@
  
      // Expense Methods
      async handleSubmit() {
-       if (!this.validateExpenseForm()) return;
+  try {
+    if (!this.validateExpenseForm()) return;
 
-       try {
-    const currentBudget = this.getCurrentBudget;
-    if (!currentBudget || !currentBudget.id) {
-      throw new Error('No valid budget set for this month');
+    if (!this.currentBudget.id) {
+      throw new Error('Please set a budget for this month before adding expenses');
     }
-       
-       const expenseData = {
-         item_price: this.itemPrice,
-         expense_type: this.expenseType === 'Other' ? this.customExpenseType : this.expenseType,
-         item_name: this.itemName,
-         personal_budget_id: currentBudget.id
-       };
- 
-         const action = this.editId ? 'updateExpense' : 'addExpense';
-         const payload = this.editId 
-           ? { id: this.editId, expenseData } 
-           : expenseData;
-           
-         const { success, message } = await this[action](payload);
-         
-         if (success) {
-           this.showExpenseSuccessMessage(message || 'Expense saved successfully!');
-           this.resetForm();
-         } else {
-           throw new Error(message);
-         }
-       } catch (error) {
-        console.error('Expense submission error:', error);
-         this.showExpenseSuccessMessage(error.message || 'Failed to save expense');
-       }
-     },
- 
+
+    const expenseData = {
+      item_price: Number(this.itemPrice), 
+      expense_type: this.expenseType === 'Other' ? this.customExpenseType : this.expenseType,
+      item_name: this.itemName,
+      personal_budget_id: this.currentBudget.id
+    };
+
+    const action = this.editId ? 'updateExpense' : 'addExpense';
+    const payload = this.editId 
+      ? { id: this.editId, expenseData } 
+      : expenseData;
+      
+    const result = await this[action](payload).catch(error => {
+      throw new Error(error.message || 'Failed to save expense');
+    });
+    
+    if (result && result.success) {
+      this.showExpenseSuccessMessage(result.message || 'Expense saved successfully!');
+      this.resetForm();
+      await this.fetchExpenses();
+    } else {
+      throw new Error(result?.message || 'Failed to save expense');
+    }
+  } catch (error) {
+    console.error('Expense submission error:', error);
+    this.showExpenseSuccessMessage(error.message || 'Failed to save expense');
+  }
+},
      validateExpenseForm() {
+      const price = Number(this.itemPrice);
+  if (isNaN(price) || price <= 0) {
+    this.showExpenseSuccessMessage('Please enter a valid amount');
+    return false;
+  }
        if (!this.itemPrice) {
          this.showExpenseSuccessMessage('Please enter an amount');
          return false;
@@ -452,13 +480,13 @@
          this.showExpenseSuccessMessage('Please enter an item name');
          return false;
        }
-  const currentBudget = this.getCurrentBudget;
-  if (!currentBudget || !currentBudget.id) {
+       if (!this.currentBudget || !this.currentBudget.id) {
     this.showExpenseSuccessMessage('No valid budget set for this month');
+    console.warn('Current budget:', this.currentBudget);
     return false;
-       }
-       return true;
-     },
+  }
+  return true;
+},
  
      editExpense(expense) {
        this.editId = expense.id;
@@ -477,6 +505,15 @@
          this.showExpenseSuccessMessage(result.message || 'Failed to delete expense');
        }
      },
+
+     handleError(error) {
+    console.error('Component error:', error);
+    this.error = error.message || 'An unexpected error occurred';
+  },
+  resetError() {
+    this.error = null;
+    this.mounted(); // Retry initialization
+  },
      
      resetForm() {
        this.expenseType = '';
@@ -503,20 +540,23 @@
      },
      
      showExpenseSuccessMessage(message) {
-       if (this.expenseSuccessTimeout) {
-         clearTimeout(this.expenseSuccessTimeout);
-       }
-       
-       this.expenseHideMessage = false;
-       this.expenseSuccessMessage = message;
-       
-       this.expenseSuccessTimeout = setTimeout(() => {
-         this.expenseHideMessage = true;
-         setTimeout(() => {
-           this.expenseSuccessMessage = '';
-         }, 500);
-       }, 2500);
-     },
+  // Clear any existing timeout
+  if (this.expenseSuccessTimeout) {
+    clearTimeout(this.expenseSuccessTimeout);
+    this.expenseSuccessTimeout = null;
+  }
+  
+  this.expenseHideMessage = false;
+  this.expenseSuccessMessage = message;
+  
+  this.expenseSuccessTimeout = setTimeout(() => {
+    this.expenseHideMessage = true;
+    this.expenseSuccessTimeout = setTimeout(() => {
+      this.expenseSuccessMessage = '';
+      this.expenseSuccessTimeout = null;
+    }, 500);
+  }, 2500);
+},
  
      getCurrentBudgetId() {
        return this.getCurrentBudget ? this.getCurrentBudget.id : null;
