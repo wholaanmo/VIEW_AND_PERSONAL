@@ -60,23 +60,29 @@ export default createStore({
       state.selectedMonthYear = monthYear
     },
     ADD_EXPENSE(state, expense) {
-      if (!expense || typeof expense !== 'object') {
-        console.error('Invalid expense:', expense);
-        return;
+      try {
+        // Validate the expense object
+        if (!expense) {
+          console.warn('Attempted to add undefined expense');
+          return;
+        }
+    
+        // Create a validated expense object with defaults
+        const validatedExpense = {
+          id: expense.id || Date.now().toString(),
+          item_price: Number(expense.item_price) || 0,
+          expense_type: expense.expense_type || 'Other',
+          item_name: expense.item_name || 'Unnamed Expense',
+          expense_date: expense.expense_date || new Date().toISOString(),
+          personal_budget_id: expense.personal_budget_id || null
+        };
+    
+        state.expenses.push(validatedExpense);
+      } catch (error) {
+        console.error('Error in ADD_EXPENSE mutation:', error);
       }
-      
-      // Ensure required fields exist
-      const validatedExpense = {
-        id: expense.id || Date.now().toString(),
-        item_price: Number(expense.item_price) || 0,
-        expense_type: expense.expense_type || 'Unknown',
-        item_name: expense.item_name || 'Unnamed',
-        expense_date: expense.expense_date || new Date().toISOString(),
-        personal_budget_id: expense.personal_budget_id || null
-      };
-      
-      state.expenses.push(validatedExpense);
     },
+
     UPDATE_EXPENSE(state, updatedExpense) {
       const index = state.expenses.findIndex(e => e.id === updatedExpense.id)
       if (index !== -1) {
@@ -137,29 +143,52 @@ export default createStore({
     },
     async addExpense({ commit }, expenseData) {
       try {
+
+        if (!expenseData || typeof expenseData !== 'object') {
+          throw new Error('Invalid expense data');
+        }
+
         const response = await axios.post('/api/expenses', {
-          // Ensure all required fields are included
           item_price: Number(expenseData.item_price) || 0,
           expense_type: expenseData.expense_type || 'Other',
-          item_name: expenseData.item_name || '',
+          item_name: expenseData.item_name || 'Unnamed Expense',
           personal_budget_id: expenseData.personal_budget_id
         }, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` }
+          headers: { 
+            Authorization: `Bearer ${localStorage.getItem('jsontoken')}`,
+            'Content-Type': 'application/json'
+          }
         });
     
-        if (response.data?.success) {
-          commit('ADD_EXPENSE', response.data.data);
-          return { success: true, message: 'Expense added successfully' };
-        }
-        return { success: false, message: response.data?.message || 'Failed to add expense' };
-      } catch (error) {
-        console.error("Error adding expense:", error);
-        return { 
-          success: false, 
-          message: error.response?.data?.message || error.message || 'Failed to add expense'
-        };
+    if (!response.data) {
+      throw new Error('Empty response from server');
+    }
+
+    if (response.data.success) {
+      // Only commit if data exists
+      if (response.data.data) {
+        commit('ADD_EXPENSE', response.data.data);
       }
-    },
+      return { 
+        success: true, 
+        message: 'Expense added successfully',
+        data: response.data.data
+      };
+    } else {
+      // Handle API success=false case
+      return { 
+        success: false, 
+        message: response.data.message || 'Failed to add expense' 
+      };
+    }
+  } catch (error) {
+    console.error("Error in addExpense action:", error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || error.message || 'Failed to add expense'
+    };
+  }
+},
     async updateExpense({ commit }, { id, expenseData }) {
       try {
         const response = await axios.put(`/api/expenses/${id}`, expenseData, {
