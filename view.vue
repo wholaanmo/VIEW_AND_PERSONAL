@@ -79,11 +79,29 @@
       </div>
 
       <div class="summary-box">
-        <p><strong>Total Expenses:</strong> {{ formatCurrency(totalAmount) }}</p>
-        <p><strong>Remaining Budget:</strong> {{ formatCurrency(budget - totalAmount) }}</p>
-      </div>
+    <h3>Budget Summary</h3>
+    <div class="summary-item">
+      <span>Budget:</span>
+      <span>{{ formatCurrency(currentBudget?.budget_amount || 0) }}</span>
     </div>
+    <div class="summary-item">
+      <span>Spent:</span>
+      <span>{{ formatCurrency(totalAmount) }}</span>
     </div>
+    <div class="summary-item remaining">
+      <span>Remaining:</span>
+      <span :class="{ 'negative': remainingBudget < 0 }">
+        {{ formatCurrency(remainingBudget) }}
+      </span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress" :style="{ width: budgetPercentage + '%' }"></div>
+    </div>
+    <div class="percentage">{{ budgetPercentage.toFixed(0) }}%</div>
+  </div>
+</div>
+</div>
+
 </template>
 
 
@@ -129,6 +147,7 @@ data() {
 computed: {
   ...mapGetters(['getExpenses', 'getPersonalBudgets']),
   expenses() {
+    
       return this.getExpenses.map(expense => ({
         ...expense,
         category: expense.expense_type,
@@ -217,12 +236,23 @@ computed: {
     },
 
     currentBudget() {
-      if (!this.getPersonalBudgets || this.getPersonalBudgets.length === 0) return null;
-      return this.getPersonalBudgets.find(
-        b => b.month_year === `${this.selectedYear}-${this.selectedMonth}`
-      );
-    },
+    if (!this.getPersonalBudgets || this.getPersonalBudgets.length === 0) return null;
+    const currentMonthYear = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    return this.getPersonalBudgets.find(
+      b => b.month_year === currentMonthYear
+    ) || { budget_amount: 0 };
   },
+  
+  remainingBudget() {
+    if (!this.currentBudget) return 0;
+    return this.currentBudget.budget_amount - this.totalAmount;
+  },
+
+  budgetPercentage() {
+  if (!this.currentBudget || this.currentBudget.budget_amount <= 0) return 0;
+  return Math.min(100, (this.totalAmount / this.currentBudget.budget_amount) * 100);
+}
+},
 
   created() {
     this.fetchExpenses();
@@ -311,6 +341,52 @@ computed: {
 
 
 <style scoped>
+.progress-bar {
+  width: 100%;
+  height: 18px; /* Increased from 6px */
+  background-color: #e0e0e0;
+  border-radius: 5px;
+  overflow: hidden;
+  margin-top: 12px; /* Added more space above the bar */
+}
+
+.progress {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50, #8BC34A);
+  transition: width 0.3s ease;
+}
+
+.progress-bar .progress {
+  background: linear-gradient(90deg, #4CAF50, #8BC34A);
+}
+
+.percentage {
+  text-align: right;
+  font-size: 16px; /* Increased from 13px */
+  margin-top: 4px; /* Increased from 2px */
+  color: #555;
+  font-weight: 500; 
+  font-weight: bold; 
+}
+
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  margin: 8px 0; /* Increased from 5px */
+  font-size: 17px;
+  font-weight: bold;
+}
+
+.summary-item.remaining {
+  padding-top: 8px; /* Increased from 5px */
+  border-top: 1px solid #eee;
+  margin-top: 12px; /* Added more space above remaining section */
+}
+.negative {
+  color: #e74c3c;
+  font-weight: 500; /* Make negative values stand out more */
+}/*newwwwwwwww */
 
 .con {
   display: flex;
