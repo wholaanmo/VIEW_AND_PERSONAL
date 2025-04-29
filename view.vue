@@ -18,7 +18,6 @@
           <button @click="filterExpenses('Transportation')" :class="{ active: filterCategory === 'Transportation' }">Transportation</button>
           <button @click="filterExpenses('Entertainment')" :class="{ active: filterCategory === 'Entertainment' }">Entertainment</button>
           <button @click="filterExpenses('Healthcare')" :class="{ active: filterCategory === 'Healthcare' }">Healthcare</button>
-          <button @click="filterExpenses('Personal Care')" :class="{ active: filterCategory === 'Personal Care' }">Personal Care</button>
           <button @click="filterExpenses('Shopping')" :class="{ active: filterCategory === 'Shopping' }">Shopping</button>
           <button @click="filterExpenses('Other')" :class="{ active: filterCategory === 'Other' }">Other</button>
           <button @click="filterExpenses('all')" :class="{ active: filterCategory === 'all' }">View All</button>
@@ -169,8 +168,7 @@ computed: {
         Bill: 0,
         Transportation: 0,
         Entertainment: 0,
-        Healthcare: 0,
-        'Personal Care': 0,
+        HealthCare: 0,
         Shopping: 0,
         Other: 0,
       };
