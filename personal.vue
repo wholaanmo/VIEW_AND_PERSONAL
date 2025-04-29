@@ -200,7 +200,8 @@
        error: null,
        currentMonthYear: this.getCurrentMonthYear(),
        showBudgetExceededAlert: false,
-       alertDismissed: false
+       alertDismissed: false,
+       lastCheckedMonthYear: null
      };
    },
    
@@ -252,17 +253,6 @@
     return this.totalAmount > this.currentBudget.budget_amount;
   }
 },
-watch: {
-  totalAmount(newVal) {
-    this.checkBudgetStatus();
-  },
-  currentBudget: {
-    deep: true,
-    handler() {
-      this.checkBudgetStatus();
-    }
-  }
-  },
 
    async mounted() {
   try {
@@ -277,14 +267,12 @@ watch: {
     // Then fetch data
     await Promise.all([
       this.fetchExchangeRate(),
-      this.fetchPersonalBudgets().then(() => {
-        // Ensure we have a valid budget state
-        if (!this.currentBudget.id) {
-          console.log('No budget found for current month');
-        }
-      }),
+      this.fetchPersonalBudgets(),
       this.fetchExpenses()
     ]);
+    
+    // Add this line to check initial budget status
+    this.checkBudgetStatus();
   } catch (error) {
     console.error("Initialization error:", error);
     this.error = error.message || 'Failed to load data';
@@ -292,6 +280,18 @@ watch: {
     this.isLoading = false;
   }
 },
+
+watch: {
+  totalAmount(newVal) {
+    this.checkBudgetStatus();
+  },
+  currentBudget: {
+    deep: true,
+    handler() {
+      this.checkBudgetStatus();
+    }
+  }
+  },
 
    methods: {
      ...mapActions([
@@ -305,13 +305,35 @@ watch: {
        'updateBudget',
        'setSelectedMonthYear' 
      ]),
+
      checkBudgetStatus() {
-    if (this.isBudgetExceeded && !this.alertDismissed) {
-      this.showBudgetExceededAlert = true;
-    } else {
-      this.showBudgetExceededAlert = false;
-    }
-  },
+  console.log('--- Checking Budget Status ---');
+  console.log('Current Budget:', this.currentBudget);
+  console.log('Budget Amount:', this.currentBudget?.budget_amount);
+  console.log('Total Expenses:', this.totalAmount);
+
+  if (!this.currentBudget?.budget_amount) {
+    this.showBudgetExceededAlert = false;
+    return;
+  }
+  
+  const currentMonthYear = this.getCurrentMonthYear();
+  if (this.lastCheckedMonthYear !== currentMonthYear) {
+    this.alertDismissed = false;
+    localStorage.removeItem('budgetAlertDismissed');
+    this.lastCheckedMonthYear = currentMonthYear;
+  }
+
+  const isExceeded = this.totalAmount > Number(this.currentBudget.budget_amount);
+  
+  if (isExceeded && !this.alertDismissed) {
+    console.log('Showing budget exceeded alert');
+    this.showBudgetExceededAlert = true;
+  } else {
+    console.log('Hiding budget exceeded alert');
+    this.showBudgetExceededAlert = false;
+  }
+},
   
   dismissAlert() {
     this.showBudgetExceededAlert = false;
@@ -491,15 +513,8 @@ watch: {
       personal_budget_id: this.currentBudget.id
     };
 
-    console.log('Submitting expense:', { 
-      editId: this.editId,
-      data: expenseData 
-    });
     let result;
     if (this.editId) {
-      if (!this.editId) {
-        throw new Error('Missing expense ID for update');
-      }
       result = await this.updateExpense({
         id: this.editId,
         expenseData: expenseData
@@ -511,7 +526,18 @@ watch: {
     if (result.success) {
       this.showExpenseSuccessMessage(result.message || (this.editId ? 'Expense updated!' : 'Expense added!'));
       this.resetForm();
-      await this.fetchExpenses(); // Refresh the list
+      
+      // Wait for both the expenses and budget to be refreshed
+      await Promise.all([
+        this.fetchExpenses(),
+        this.fetchPersonalBudgets()
+      ]);
+      
+      // Force a check after everything is updated
+      this.$nextTick(() => {
+        console.log('Checking budget after expense update');
+        this.checkBudgetStatus();
+      });
     } else {
       this.showExpenseSuccessMessage(result.message || 'Operation failed');
     }
@@ -637,17 +663,19 @@ editExpense(expense) {
 <style scoped>
 .budget-alert {
   position: fixed;
-  top: 70px;
+  top: 290px;
   left: 50%;
   transform: translateX(-50%);
   background-color: #ffebee;
   border: 1px solid #ef9a9a;
-  border-radius: 4px;
-  padding: 12px 20px;
+  border-radius: 6px;
+  padding: 20px 30px; /* Increased padding */
+  min-width: 350px;    /* Optional: ensures a wider box */
   color: #c62828;
   font-weight: bold;
+  font-size: 1.2em;    /* Increased font size */
   z-index: 1000;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
   display: flex;
   align-items: center;
   animation: slideDown 0.3s ease-out;
@@ -656,26 +684,27 @@ editExpense(expense) {
 .alert-content {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .alert-icon {
-  font-size: 1.2em;
+  font-size: 1.5em; /* Increased icon size */
 }
 
 .dismiss-btn {
   background: none;
   border: none;
   color: #c62828;
-  font-size: 1.5em;
+  font-size: 1.8em; /* Bigger button */
   cursor: pointer;
-  margin-left: 15px;
-  padding: 0 5px;
+  margin-left: 20px;
+  padding: 0 8px;
 }
 
 .dismiss-btn:hover {
   color: #b71c1c;
 }
+
 
 @keyframes slideDown {
   from {
@@ -905,6 +934,7 @@ editExpense(expense) {
   border-radius: 15px;
   border: 2px solid #85cf9d;
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  margin-top: 30px;
 }
  
 
