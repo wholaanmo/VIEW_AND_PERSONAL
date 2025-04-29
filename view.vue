@@ -99,11 +99,12 @@
     </div>
     <div class="percentage">{{ budgetPercentage.toFixed(0) }}%</div>
   </div>
-  <div v-if="isBudgetExceeded" class="exceeded-warning">
+</div>
+</div>
+
+<div v-if="isBudgetExceeded" class="exceeded-warning">
     ⚠️ Budget exceeded by {{ formatCurrency(totalAmount - currentBudget.budget_amount) }}
   </div>
-</div>
-</div>
 
 </template>
 
@@ -112,7 +113,8 @@
 import Navigation from "./navigation.vue"; 
 import { Pie } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale } from 'chart.js';
-import jsPDF from 'jspdf'; // Import jsPDF
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { mapGetters, mapActions } from 'vuex';
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale);
@@ -150,14 +152,14 @@ data() {
 
 computed: {
   ...mapGetters(['getExpenses', 'getPersonalBudgets']),
-  expenses() {
-    
+
+  expenses() {   
       return this.getExpenses.map(expense => ({
         ...expense,
         category: expense.expense_type,
         name: expense.item_name,
         amount: Number(expense.item_price),
-        date: this.formatDateForView(expense.created_at || expense.date)
+        date: this.formatDateForView(expense.expense_date)
       }));
     },
     
@@ -323,122 +325,129 @@ watch: {
       type: 'error',
       duration: 0
     });
-  }
-},
+  },
 
-async generatePDF() {
+  async generatePDF() {
   try {
-    // Create new PDF document
     const doc = new jsPDF();
+    this.formatCurrency = value => `PHP ${parseFloat(value||0).toFixed(2)}`;
     
-    // Title section
+    // Title 
     doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
     doc.text('Expense Report', 105, 20, { align: 'center' });
     
-    // Period info
     doc.setFontSize(12);
     const monthName = this.availableMonths.find(m => m.value === this.selectedMonth)?.label || '';
     doc.text(`Period: ${monthName} ${this.selectedYear}`, 105, 30, { align: 'center' });
     
     // Budget summary
-    doc.text(`Budget: ${this.formatCurrency(this.currentBudget?.budget_amount || 0)}`, 20, 40);
-    doc.text(`Total Expenses: ${this.formatCurrency(this.totalAmount)}`, 105, 40, { align: 'center' });
-    doc.text(`Remaining: ${this.formatCurrency(this.remainingBudget)}`, 180, 40, { align: 'right' });
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Budget: ${this.formatCurrency(this.currentBudget?.budget_amount || 0)}`, 20, 45);
+    doc.text(`Total Expenses: ${this.formatCurrency(this.totalAmount)}`, 165, 45, { align: 'center' });
+    doc.text(`Remaining: ${this.formatCurrency(this.remainingBudget)}`, 128, 55, { align: 'right' });
     
-    // Expenses table header
-    let yOffset = 60;
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'bold');
-    doc.text('Date', 20, yOffset);
-    doc.text('Category', 60, yOffset);
-    doc.text('Description', 100, yOffset);
-    doc.text('Amount', 180, yOffset, { align: 'right' });
-    yOffset += 7;
-    
-    // Table line
-    doc.line(20, yOffset, 190, yOffset);
-    yOffset += 10;
-    doc.setFont(undefined, 'normal');
-    
-    // Filter expenses for selected period
-    const filteredForPDF = this.expenses.filter(expense => {
+    const pdfExpenses = this.expenses.filter(expense => {
       return expense.date && expense.date.startsWith(`${this.selectedYear}-${this.selectedMonth}`);
     });
     
-    // Add expenses to PDF
-    filteredForPDF.forEach((expense) => {
-      // Check if we need a new page
-      if (yOffset > 250) {
-        doc.addPage();
-        yOffset = 20;
-      }
-      
-      doc.text(expense.date, 20, yOffset);
-      doc.text(expense.category, 60, yOffset);
-      doc.text(expense.name.substring(0, 30), 100, yOffset); // Limit description length
-      doc.text(this.formatCurrency(expense.amount), 180, yOffset, { align: 'right' });
-      yOffset += 10;
-    });
+    // Prepare table data
+    const tableData = pdfExpenses.map(expense => [
+      expense.date,
+      expense.category,
+      expense.name,
+      this.formatCurrency(expense.amount)
+    ]);
     
-    // Add chart if available
+    // Add expense table
+    autoTable(doc, {
+  head: [['Date', 'Category', 'Description', 'Amount']],
+  body: tableData,
+  startY: 70, // Lower starting position
+  margin: { left: 10, right: 10 },
+  styles: {
+    cellPadding: 4, // Reduced padding
+    fontSize: 9,
+    halign: 'left',
+    valign: 'middle',
+    overflow: 'linebreak'
+  },
+  columnStyles: {
+    0: { cellWidth: 60 }, // Date
+    1: { cellWidth: 60 }, // Category
+    2: { cellWidth: 'auto',},
+    3: { cellWidth: 25 } // Amount
+  },
+  didDrawCell: (data) => {
+    if (data.section === 'body' && data.column.index === 2) {
+      data.cell.text = doc.splitTextToSize(data.cell.raw, data.cell.width - 4);
+    }
+  },
+  headStyles: {
+    fillColor: [76, 175, 80],
+    textColor: 255,
+    fontStyle: 'bold'
+  }
+});
+    
+    // Add chart with percentages
     try {
       await this.$nextTick();
       const chartCanvas = document.querySelector('canvas');
       if (chartCanvas) {
-        // Add new page for chart
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const chartImage = chartCanvas.toDataURL('image/png');
         doc.addPage();
         doc.setFontSize(16);
         doc.text('Expense Breakdown', 105, 20, { align: 'center' });
-        
-        // Convert canvas to image
-        const chartImage = await new Promise((resolve) => {
-          setTimeout(() => {
-            resolve(chartCanvas.toDataURL('image/png'));
-          }, 500); // Small delay to ensure chart renders
-        });
-        
-        // Add chart image
         doc.addImage(chartImage, 'PNG', 30, 30, 150, 150);
       }
     } catch (chartError) {
       console.error('Error adding chart:', chartError);
     }
     
-    // Save PDF
     doc.save(`expense-report-${this.selectedYear}-${this.selectedMonth}.pdf`);
-    
   } catch (error) {
     console.error('Error generating PDF:', error);
-    alert('Failed to generate PDF. Please try again.');
+    this.$store.commit('SET_GLOBAL_ALERT', {
+      message: 'Failed to generate PDF. Please try again.',
+      type: 'error'
+    });
   }
 }
 }
+};
 </script>
 
 
 
 <style scoped>
 .text-danger {
-  color: #ffffff; /* white text for contrast */
+  color: #ffffff;
   font-weight: bold;
   font-size: 25px;
 }
 
 .exceeded-warning {
-  background-color: #e53935; /* Strong red shade */
+  background-color: #e53935;
   border-left: 4px solid #b71c1c;
-  padding: 8px 10px;
-  margin: 10px auto; /* Center horizontally */
+  padding: 10px 15px;
+  margin: 10px auto; /* vertically space + center horizontally */
+  margin-inline: 30px; /* adds left and right margin */
   border-radius: 8px;
   display: flex;
   align-items: center;
-  justify-content: center; /* Center content horizontally */
+  justify-content: center;
   gap: 10px;
   color: #ffffff;
-  font-size: 18px; /* Bigger text */
-  max-width: 400px; /* Prevent it from stretching too wide */
+  font-size: 18px;
   text-align: center;
+  max-width: 100%; /* avoids overflowing if parent is small */
+  box-sizing: border-box;
 }
+
+
 
 .summary-box {
   padding: 2px 16px 6px 16px; 
@@ -476,7 +485,7 @@ async generatePDF() {
 .percentage {
   text-align: right;
   font-size: 13px; /* Reduced font size */
-  margin-top: 2px;
+  margin-top: 4px;
   color: #555;
   font-weight: bold;
 }
@@ -484,7 +493,7 @@ async generatePDF() {
 .summary-item {
   display: flex;
   justify-content: space-between;
-  margin: 4px 0;
+  margin: 10px 0;
   font-size: 16px; /* Smaller font */
   font-weight: bold;
 }
@@ -640,13 +649,23 @@ button:hover {
   border: 2px solid #336333;
   margin-bottom: 10px;
 }
-
-.download{
+.download {
   display: flex;
   flex-wrap: wrap;
   justify-content: center; 
   align-items: center; 
   margin-top: 10px;
+  gap: 10px;
+}
+
+.download select {
+  width: 100px; /* Smaller width */
+  padding: 6px 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background-color: #fff;
+  cursor: pointer;
 }
 
 .download-button {
@@ -659,7 +678,7 @@ color: white;
 border: none;
 cursor: pointer;
 align-self: center;
-margin-bottom: 10px;
+margin-bottom: 8px;
 margin-left: 3px;
 }
 
