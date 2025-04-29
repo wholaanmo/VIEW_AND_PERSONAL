@@ -99,6 +99,9 @@
     </div>
     <div class="percentage">{{ budgetPercentage.toFixed(0) }}%</div>
   </div>
+  <div v-if="isBudgetExceeded" class="exceeded-warning">
+    ⚠️ Budget exceeded by {{ formatCurrency(totalAmount - currentBudget.budget_amount) }}
+  </div>
 </div>
 </div>
 
@@ -124,6 +127,7 @@ data() {
     currentView: 'view', 
     filterCategory: 'all', 
     filterMonth: '', 
+    wasBudgetExceeded: false,
     selectedYear: new Date().getFullYear().toString(), 
     selectedMonth: (new Date().getMonth() + 1).toString().padStart(2, '0'),
     chartOptions: {
@@ -251,14 +255,44 @@ computed: {
   budgetPercentage() {
   if (!this.currentBudget || this.currentBudget.budget_amount <= 0) return 0;
   return Math.min(100, (this.totalAmount / this.currentBudget.budget_amount) * 100);
-}
 },
+
+isBudgetExceeded() {
+  if (!this.currentBudget?.budget_amount) return false;
+  return this.totalAmount > this.currentBudget.budget_amount;
+}, // newwwwwwwwwwwww
+
+watch: {
+  totalAmount(newVal) {
+    if (this.isBudgetExceeded) {
+      this.$notify({
+        title: 'Budget Exceeded',
+        text: 'You have exceeded your monthly budget!',
+        type: 'warning',
+        duration: 0 // 0 means it won't auto-close
+      });
+    }
+  },
+  currentBudget: {
+    deep: true,
+    handler() {
+      if (this.isBudgetExceeded) {
+        this.$notify({
+          title: 'Budget Exceeded',
+          text: 'You have exceeded your monthly budget!',
+          type: 'warning',
+          duration: 0
+        });
+      }
+    }
+  }
+}
+}, //newwwwwwwwwwww
 
   created() {
     this.fetchExpenses();
     this.fetchPersonalBudgets();
   },
-  
   
   methods: {
     ...mapActions(['fetchExpenses', 'fetchPersonalBudgets']),
@@ -281,73 +315,152 @@ computed: {
       const date = new Date(dateString);
       return date.toISOString().split('T')[0];
     },
+
+    showBudgetWarning() {
+    this.$notify({
+      title: 'Budget Exceeded',
+      text: `Current spending: ${this.formatCurrency(this.totalAmount)}\nBudget: ${this.formatCurrency(this.currentBudget?.budget_amount)}`,
+      type: 'error',
+      duration: 0
+    });
+  }
+},
+
+async generatePDF() {
+  try {
+    // Create new PDF document
+    const doc = new jsPDF();
     
-    async generatePDF() {
-      const doc = new jsPDF();
+    // Title section
+    doc.setFontSize(18);
+    doc.text('Expense Report', 105, 20, { align: 'center' });
+    
+    // Period info
+    doc.setFontSize(12);
+    const monthName = this.availableMonths.find(m => m.value === this.selectedMonth)?.label || '';
+    doc.text(`Period: ${monthName} ${this.selectedYear}`, 105, 30, { align: 'center' });
+    
+    // Budget summary
+    doc.text(`Budget: ${this.formatCurrency(this.currentBudget?.budget_amount || 0)}`, 20, 40);
+    doc.text(`Total Expenses: ${this.formatCurrency(this.totalAmount)}`, 105, 40, { align: 'center' });
+    doc.text(`Remaining: ${this.formatCurrency(this.remainingBudget)}`, 180, 40, { align: 'right' });
+    
+    // Expenses table header
+    let yOffset = 60;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.text('Date', 20, yOffset);
+    doc.text('Category', 60, yOffset);
+    doc.text('Description', 100, yOffset);
+    doc.text('Amount', 180, yOffset, { align: 'right' });
+    yOffset += 7;
+    
+    // Table line
+    doc.line(20, yOffset, 190, yOffset);
+    yOffset += 10;
+    doc.setFont(undefined, 'normal');
+    
+    // Filter expenses for selected period
+    const filteredForPDF = this.expenses.filter(expense => {
+      return expense.date && expense.date.startsWith(`${this.selectedYear}-${this.selectedMonth}`);
+    });
+    
+    // Add expenses to PDF
+    filteredForPDF.forEach((expense) => {
+      // Check if we need a new page
+      if (yOffset > 250) {
+        doc.addPage();
+        yOffset = 20;
+      }
       
-      doc.setFontSize(18);
-      doc.text('Expense Report', 105, 20, { align: 'center' });
-      
-      doc.setFontSize(12);
-      const monthName = this.availableMonths.find(m => m.value === this.selectedMonth)?.label || '';
-      doc.text(`Period: ${monthName} ${this.selectedYear}`, 105, 30, { align: 'center' });
-      
-      doc.text(`Total Expenses: ${this.formatCurrency(this.totalAmount)}`, 105, 40, { align: 'center' });
-      
-      // Expenses table
-      let yOffset = 50;
-      doc.setFontSize(10);
-      doc.text('Date', 20, yOffset);
-      doc.text('Category', 60, yOffset);
-      doc.text('Description', 100, yOffset);
-      doc.text('Amount', 180, yOffset);
-      yOffset += 7;
-      
-      doc.line(20, yOffset, 190, yOffset);
+      doc.text(expense.date, 20, yOffset);
+      doc.text(expense.category, 60, yOffset);
+      doc.text(expense.name.substring(0, 30), 100, yOffset); // Limit description length
+      doc.text(this.formatCurrency(expense.amount), 180, yOffset, { align: 'right' });
       yOffset += 10;
-      
-      const filteredForPDF = this.expenses.filter(expense => {
-        return expense.date && expense.date.startsWith(`${this.selectedYear}-${this.selectedMonth}`);
-      });
-      
-      filteredForPDF.forEach((expense) => {
-        doc.text(expense.date, 20, yOffset);
-        doc.text(expense.category, 60, yOffset);
-        doc.text(expense.name, 100, yOffset);
-        doc.text(this.formatCurrency(expense.amount), 180, yOffset, { align: 'right' });
-        yOffset += 10;
-        
-        if (yOffset > 250) {
-          doc.addPage();
-          yOffset = 20;
-        }
-      });
-      
-      // Chart
+    });
+    
+    // Add chart if available
+    try {
       await this.$nextTick();
       const chartCanvas = document.querySelector('canvas');
       if (chartCanvas) {
-        const chartImage = chartCanvas.toDataURL('image/png');
+        // Add new page for chart
         doc.addPage();
-        doc.addImage(chartImage, 'PNG', 20, 20, 160, 160);
+        doc.setFontSize(16);
+        doc.text('Expense Breakdown', 105, 20, { align: 'center' });
+        
+        // Convert canvas to image
+        const chartImage = await new Promise((resolve) => {
+          setTimeout(() => {
+            resolve(chartCanvas.toDataURL('image/png'));
+          }, 500); // Small delay to ensure chart renders
+        });
+        
+        // Add chart image
+        doc.addImage(chartImage, 'PNG', 30, 30, 150, 150);
       }
-      
-      doc.save(`expense-report-${this.selectedYear}-${this.selectedMonth}.pdf`);
-    },
-  },
-};
+    } catch (chartError) {
+      console.error('Error adding chart:', chartError);
+    }
+    
+    // Save PDF
+    doc.save(`expense-report-${this.selectedYear}-${this.selectedMonth}.pdf`);
+    
+  } catch (error) {
+    console.error('Error generating PDF:', error);
+    alert('Failed to generate PDF. Please try again.');
+  }
+}
+}
 </script>
 
 
 
 <style scoped>
+.text-danger {
+  color: #ffffff; /* white text for contrast */
+  font-weight: bold;
+  font-size: 25px;
+}
+
+.exceeded-warning {
+  background-color: #e53935; /* Strong red shade */
+  border-left: 4px solid #b71c1c;
+  padding: 8px 10px;
+  margin: 10px auto; /* Center horizontally */
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center; /* Center content horizontally */
+  gap: 10px;
+  color: #ffffff;
+  font-size: 18px; /* Bigger text */
+  max-width: 400px; /* Prevent it from stretching too wide */
+  text-align: center;
+}
+
+.summary-box {
+  padding: 2px 16px 6px 16px; 
+  background-color: #99da99;
+  border: 2px solid #1e3731;
+  border-radius: 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+  font-size: 16px;
+  margin: 2px 0 6px 0; /* Liit ang top margin to 2px */
+  text-align: center;
+  color: #000000;
+  min-width: 280px;
+  max-width: 100%;
+}
+
 .progress-bar {
   width: 100%;
-  height: 18px; /* Increased from 6px */
+  height: 9px; /* Smaller progress bar height */
   background-color: #e0e0e0;
-  border-radius: 5px;
+  border-radius: 4px;
   overflow: hidden;
-  margin-top: 12px; /* Added more space above the bar */
+  margin-top: 7px;
 }
 
 .progress {
@@ -362,31 +475,30 @@ computed: {
 
 .percentage {
   text-align: right;
-  font-size: 16px; /* Increased from 13px */
-  margin-top: 4px; /* Increased from 2px */
+  font-size: 13px; /* Reduced font size */
+  margin-top: 2px;
   color: #555;
-  font-weight: 500; 
-  font-weight: bold; 
+  font-weight: bold;
 }
-
 
 .summary-item {
   display: flex;
   justify-content: space-between;
-  margin: 8px 0; /* Increased from 5px */
-  font-size: 17px;
+  margin: 4px 0;
+  font-size: 16px; /* Smaller font */
   font-weight: bold;
 }
 
 .summary-item.remaining {
-  padding-top: 8px; /* Increased from 5px */
+  padding-top: 5px;
   border-top: 1px solid #eee;
-  margin-top: 12px; /* Added more space above remaining section */
+  margin-top: 8px;
 }
+
 .negative {
   color: #e74c3c;
-  font-weight: 500; /* Make negative values stand out more */
-}/*newwwwwwwww */
+  font-weight: 500;
+}
 
 .con {
   display: flex;
@@ -553,18 +665,6 @@ margin-left: 3px;
 
 .download-button:hover {
 background-color: #1e3731;
-}
-
-.summary-box {
-  padding: 12px 20px;
-  background-color: #99da99;
-  border: 2px solid #1e3731;
-  border-radius: 12px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-  font-size: 16px;
-  margin-bottom: 10px;
-  text-align: center;
-  color: #000000;
 }
 
 </style> 
