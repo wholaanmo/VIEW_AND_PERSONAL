@@ -6,20 +6,23 @@ export default createStore({
     expenses: [],
     personalBudgets: [],
     usdExchangeRate: 56.50,
-    selectedMonthYear: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0')
+    selectedMonthYear: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'),
+    globalAlert: null
   },
   getters: {
     getExpenses: state => state.expenses,
     getPersonalBudgets: state => state.personalBudgets,
     getTotalAmount: state => {
+      console.log('Calculating total amount from expenses:', state.expenses);
       return state.expenses.reduce((sum, expense) => {
-        // Add null checks and default value
         const price = Number(expense?.item_price) || 0;
         return sum + price;
       }, 0); // Start with 0 as initial value
     },
     getCurrentBudget: state => {
       try {
+        console.log('Finding budget for:', state.selectedMonthYear);
+        console.log('Available budgets:', state.personalBudgets);
         if (!state.personalBudgets || !Array.isArray(state.personalBudgets)) {
           return null;
         }
@@ -28,7 +31,11 @@ export default createStore({
           b => b?.month_year === state.selectedMonthYear
         );
         
-        return currentBudget || null;
+        console.log('Found budget:', currentBudget);
+        return currentBudget || { 
+          budget_amount: 0, 
+          month_year: state.selectedMonthYear 
+        };
       } catch (error) {
         console.error("Error in getCurrentBudget:", error);
         return null;
@@ -58,6 +65,9 @@ export default createStore({
     },
     SET_SELECTED_MONTH_YEAR(state, monthYear) {
       state.selectedMonthYear = monthYear
+    },
+    SET_GLOBAL_ALERT(state, message) {
+      state.globalAlert = message
     },
     ADD_EXPENSE(state, expense) {
       try {
