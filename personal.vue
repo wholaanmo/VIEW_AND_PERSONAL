@@ -1,6 +1,13 @@
 <template>
   <navigation/>
   <div class="main-layout">
+    <div v-if="showBudgetExceededAlert" class="budget-alert">
+      <div class="alert-content">
+        <span class="alert-icon">⚠️</span>
+        <span>You have exceeded your monthly budget!</span>
+        <button @click="dismissAlert" class="dismiss-btn">×</button>
+      </div>
+      </div>
     <div v-if="error" class="error-message">
         An error occurred: {{ error }}
         <button @click="resetError">Try Again</button>
@@ -191,7 +198,9 @@
        expenseSuccessTimeout: null,
        filterMonth: null,
        error: null,
-       currentMonthYear: this.getCurrentMonthYear()
+       currentMonthYear: this.getCurrentMonthYear(),
+       showBudgetExceededAlert: false,
+       alertDismissed: false
      };
    },
    
@@ -208,10 +217,6 @@
       this.$store.commit('SET_SELECTED_MONTH_YEAR', value);
     }
   },
-
- // defaultMonthYear() {
- //   return `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
- // },
 
   currentBudget() {
     const budget = this.$store.getters.getCurrentBudget;
@@ -240,12 +245,29 @@
      
   hasExistingBudget() {
     return !!this.currentBudget.id;
+  },
+
+  isBudgetExceeded() {
+    if (!this.currentBudget?.budget_amount) return false;
+    return this.totalAmount > this.currentBudget.budget_amount;
   }
-   },
+},
+watch: {
+  totalAmount(newVal) {
+    this.checkBudgetStatus();
+  },
+  currentBudget: {
+    deep: true,
+    handler() {
+      this.checkBudgetStatus();
+    }
+  }
+  },
 
    async mounted() {
   try {
     this.isLoading = true;
+    this.alertDismissed = localStorage.getItem('budgetAlertDismissed') === 'true';
     
     // Initialize selected month first
     if (!this.$store.state.selectedMonthYear) {
@@ -270,6 +292,7 @@
     this.isLoading = false;
   }
 },
+
    methods: {
      ...mapActions([
        'fetchExchangeRate',
@@ -282,7 +305,20 @@
        'updateBudget',
        'setSelectedMonthYear' 
      ]),
-
+     checkBudgetStatus() {
+    if (this.isBudgetExceeded && !this.alertDismissed) {
+      this.showBudgetExceededAlert = true;
+    } else {
+      this.showBudgetExceededAlert = false;
+    }
+  },
+  
+  dismissAlert() {
+    this.showBudgetExceededAlert = false;
+    this.alertDismissed = true;
+    // Optional: Store dismissal in localStorage to persist across page refreshes
+    localStorage.setItem('budgetAlertDismissed', 'true');
+  },
      getCurrentMonthYear() {
       const now = new Date();
       const month = now.getMonth() + 1; // JavaScript months are 0-indexed
@@ -599,6 +635,58 @@ editExpense(expense) {
 
  
 <style scoped>
+.budget-alert {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #ffebee;
+  border: 1px solid #ef9a9a;
+  border-radius: 4px;
+  padding: 12px 20px;
+  color: #c62828;
+  font-weight: bold;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  animation: slideDown 0.3s ease-out;
+}
+
+.alert-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alert-icon {
+  font-size: 1.2em;
+}
+
+.dismiss-btn {
+  background: none;
+  border: none;
+  color: #c62828;
+  font-size: 1.5em;
+  cursor: pointer;
+  margin-left: 15px;
+  padding: 0 5px;
+}
+
+.dismiss-btn:hover {
+  color: #b71c1c;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+} /*NEWWWWWWWWWWWW */
 .main-layout {
   display: flex;
   flex-direction: column;
