@@ -101,7 +101,6 @@
              <option value="Transportation">Transportation</option>
              <option value="Entertainment">Entertainment</option>
              <option value="Healthcare">Healthcare</option>
-             <option value="Personalcare">Personal care</option>
              <option value="Shopping">Shopping</option> 
              <option value="Other">Other</option>
             </select>
