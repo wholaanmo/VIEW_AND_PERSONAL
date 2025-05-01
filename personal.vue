@@ -247,8 +247,13 @@
     },
  
      totalAmount() {
-       return this.getTotalAmount;
-     },
+      try {
+    return this.getTotalAmount || 0;
+  } catch (error) {
+    console.error('Error calculating total amount:', error);
+    return 0;
+  }
+},
  
      totalInUsd() {
        return (this.totalAmount / this.usdExchangeRate).toFixed(2);
@@ -273,7 +278,8 @@
     this.isLoading = true;
     this.alertDismissed = localStorage.getItem('budgetAlertDismissed') === 'true';
     
-    // Initialize selected month first
+    this.checkMonthChange();
+
     if (!this.$store.state.selectedMonthYear) {
       await this.setSelectedMonthYear(this.currentMonthYear);
     }
@@ -287,26 +293,53 @@
     
     // Add this line to check initial budget status
     this.checkBudgetStatus();
-  } catch (error) {
-    console.error("Initialization error:", error);
-    this.error = error.message || 'Failed to load data';
-  } finally {
-    this.isLoading = false;
-  }
-},
-
-watch: {
-  totalAmount(newVal) {
-    this.checkBudgetStatus();
+    this.monthCheckInterval = setInterval(this.checkMonthChange, 86400000); // 24 hours
+    } catch (error) {
+      console.error("Initialization error:", error);
+      this.error = error.message || 'Failed to load data';
+    } finally {
+      this.isLoading = false;
+    }
   },
+
+  beforeUnmount() {
+    clearInterval(this.monthCheckInterval);
+  },
+
+
+  watch: {
+  selectedMonthYear: {
+    immediate: true,
+    async handler(newVal, oldVal) {
+      if (newVal !== oldVal) {
+        try {
+          await Promise.all([
+            this.fetchExpenses(),
+            this.fetchPersonalBudgets()
+          ]);
+          this.checkBudgetStatus();
+        } catch (error) {
+          console.error('Error fetching data after month change:', error);
+        }
+      }
+    }
+  },
+  
+  totalAmount: {
+    immediate: true,
+    handler(newVal) {
+      this.checkBudgetStatus();
+    }
+  },
+  
   currentBudget: {
     deep: true,
+    immediate: true,
     handler() {
       this.checkBudgetStatus();
     }
   }
-  },
-
+},
    methods: {
      ...mapActions([
        'fetchExchangeRate',
@@ -319,6 +352,29 @@ watch: {
        'updateBudget',
        'setSelectedMonthYear' 
      ]),
+    checkMonthChange() {
+    const lastAccessedMonth = localStorage.getItem('lastAccessedMonth');
+    const currentMonth = new Date().getMonth();
+    
+    if (lastAccessedMonth && parseInt(lastAccessedMonth) !== currentMonth) {
+        console.log('New month detected - resetting view');
+        localStorage.removeItem('budgetAlertDismissed');
+        this.alertDismissed = false;
+
+        const newMonthYear = this.getCurrentMonthYear();
+        this.setSelectedMonthYear(newMonthYear);
+        
+        Promise.all([
+      this.fetchExpenses(),
+      this.fetchPersonalBudgets()
+    ]).then(() => {
+      this.checkBudgetStatus();
+    });
+  }
+      
+      localStorage.setItem('lastAccessedMonth', currentMonth);
+    },
+
      onItemNameChange() {
       clearTimeout(this.predictionDebounce);
       
@@ -375,7 +431,7 @@ shouldSuggestAlternative(itemName) {
         ],
         Transportation: [
           "gasoline", "gas", "petrol", "diesel", "jeepney fare",
-          "bus fare", "mrt fare", "grab", "angkas", "taxi",
+          "bus", "mrt", "grab", "angkas", "taxi",
           "lrt fare", "tricycle fare", "parking fee", "car maintenance"
         ],
         Entertainment: [
@@ -626,11 +682,15 @@ shouldSuggestAlternative(itemName) {
       return;
     }
 
+    const currentDate = new Date();
+    const currentMonthYear = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+
     const expenseData = {
       item_price: Number(this.itemPrice), 
       expense_type: this.expenseType === 'Other' ? this.customExpenseType : this.expenseType,
       item_name: this.itemName,
-      personal_budget_id: this.currentBudget.id
+      personal_budget_id: this.currentBudget.id,
+      expense_date: currentDate.toISOString()
     };
 
     let result;
@@ -789,7 +849,7 @@ editExpense(expense) {
        return this.getCurrentBudget ? this.getCurrentBudget.id : null;
      }
    }
- };
+  };
  </script>
 
  
