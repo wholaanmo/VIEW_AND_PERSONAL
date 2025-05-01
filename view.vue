@@ -170,10 +170,19 @@ export default {
   },
 
   computed: {
-    ...mapGetters(['getExpenses', 'getPersonalBudgets', 'getCurrentBudget']),
+    ...mapGetters(['getViewExpenses', 'getPersonalBudgets', 'getCurrentBudget', 'getViewPageMonthYear']),
+
+   selectedMonthYear: {
+    get() {
+      return this.$store.state.viewPageMonthYear;
+    },
+    set(value) {
+      this.$store.commit('SET_VIEW_PAGE_MONTH_YEAR', value);
+    }
+  },
 
     expenses() {   
-      return this.getExpenses.map(expense => ({
+      return (this.getViewExpenses || []).map(expense => ({
         ...expense,
         category: expense.expense_type,
         name: expense.item_name,
@@ -215,7 +224,7 @@ export default {
             '#a0f0eb', '#fba9dc', '#a9b3f0', '#e3f484', 
             '#d3a9f5', '#a9e9a7', '#f98b8b', '#8f9ff0'  
           ],
-          borderWidth: 2,
+          borderWidth: 1,
         }]
       };
     },
@@ -301,12 +310,12 @@ export default {
   },
 
   created() {
-    this.fetchExpenses();
+    this.fetchViewExpenses();
     this.fetchPersonalBudgets();
   },
 
   methods: {
-    ...mapActions(['fetchExpenses', 'fetchPersonalBudgets', 'setSelectedMonthYear']),
+    ...mapActions(['fetchViewExpenses', 'fetchPersonalBudgets']),
     
     filterExpenses(category) {
       this.filterCategory = category;
@@ -318,10 +327,10 @@ export default {
     },
 
     updateSelectedMonthYear() {
-      const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
-      this.setSelectedMonthYear(monthYear);
-      this.fetchExpenses();
-    },
+    const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
+    this.$store.commit('SET_VIEW_PAGE_MONTH_YEAR', monthYear);
+    this.fetchViewExpenses();
+  },
     
     formatCurrency(value) {
       if (value == null || isNaN(value)) return '₱0.00';
