@@ -6,13 +6,30 @@
           <h1>Personal Expenses</h1>
     </div>
     <div class="con-container">
-    <!-- Navigation Buttons (centered) -->
-    <!-- Content Based on the Current View -->
+
     <div v-if="currentView === 'view'" class="budget-section">
       <div class="content-wrapper">
+        <div class="month-year-selector">
+            <div class="year-selector">
+              <label for="year">Year:</label>
+              <select id="year" v-model="selectedYear" @change="updateSelectedMonthYear">
+                <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+              </select>
+            </div>
+            
+            <div class="month-buttons">
+              <button 
+                v-for="month in availableMonths" 
+                :key="month.value"
+                @click="selectMonth(month.value)"
+                :class="{ active: selectedMonth === month.value }"
+              >
+                {{ month.label.substring(0, 3) }}
+              </button>
+            </div>
+          </div>
         <!-- Filter Buttons -->
         <div class="filter-buttons">
-          <form @submit.prevent>
           <button @click="filterExpenses('Food')" :class="{ active: filterCategory === 'Food' }">Food</button>
           <button @click="filterExpenses('Bill')" :class="{ active: filterCategory === 'Bill' }">Bill</button>
           <button @click="filterExpenses('Transportation')" :class="{ active: filterCategory === 'Transportation' }">Transportation</button>
@@ -21,15 +38,11 @@
           <button @click="filterExpenses('Shopping')" :class="{ active: filterCategory === 'Shopping' }">Shopping</button>
           <button @click="filterExpenses('Other')" :class="{ active: filterCategory === 'Other' }">Other</button>
           <button @click="filterExpenses('all')" :class="{ active: filterCategory === 'all' }">View All</button>
-            <input type="month" v-model="filterMonth" />
-            <button @click="filterExpensesByMonth" title="Search">
-                <i class="fa fa-search"></i>
-            </button>
-          </form>
         </div>
 
         <!-- Expense Table -->
         <div class="expense-table">
+          <h3>Expenses for {{ availableMonths.find(m => m.value === selectedMonth)?.label }} {{ selectedYear }}</h3>
           <table>
             <thead>
               <tr>
@@ -119,20 +132,27 @@ import { mapGetters, mapActions } from 'vuex';
 ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale);
 
 export default {
-components: {
-  Navigation,
-  PieChart: Pie,
-},
-data() {
-  return {
-    currentView: 'view', 
-    filterCategory: 'all', 
-    filterMonth: '', 
-    wasBudgetExceeded: false,
-    selectedYear: new Date().getFullYear().toString(), 
-    selectedMonth: (new Date().getMonth() + 1).toString().padStart(2, '0'),
-    chartOptions: {
+  components: {
+    Navigation,
+    PieChart: Pie,
+  },
+  data() {
+    return {
+      currentView: 'view', 
+      filterCategory: 'all', 
+      filterMonth: '', 
+      wasBudgetExceeded: false,
+      selectedYear: new Date().getFullYear().toString(), 
+      selectedMonth: (new Date().getMonth() + 1).toString().padStart(2, '0'),
+      chartOptions: {
         responsive: true,
+        onClick: (event, elements) => {
+          if (elements.length > 0) {
+            const index = elements[0].index;
+            const month = this.availableMonths[index];
+            this.selectMonth(month.value);
+          }
+        },
         plugins: {
           legend: {
             position: 'top',
@@ -149,10 +169,10 @@ data() {
     };
   },
 
-computed: {
-  ...mapGetters(['getExpenses', 'getPersonalBudgets']),
+  computed: {
+    ...mapGetters(['getExpenses', 'getPersonalBudgets', 'getCurrentBudget']),
 
-  expenses() {   
+    expenses() {   
       return this.getExpenses.map(expense => ({
         ...expense,
         category: expense.expense_type,
@@ -168,14 +188,15 @@ computed: {
         Bill: 0,
         Transportation: 0,
         Entertainment: 0,
-        HealthCare: 0,
+        Healthcare: 0,
         Shopping: 0,
         Other: 0,
       };
 
       this.filteredExpenses.forEach(expense => {
-        if (expense.category in categoryCounts) {
-          categoryCounts[expense.category] += expense.amount;
+        const category = expense.category === 'HealthCare' ? 'Healthcare' : expense.category; // Normalize category name
+        if (category in categoryCounts) {
+          categoryCounts[category] += expense.amount;
         } else {
           categoryCounts.Other += expense.amount;
         }
@@ -187,14 +208,14 @@ computed: {
           label: 'Expense Categories',
           data: Object.values(categoryCounts),
           backgroundColor: [
-            '#90fefb', '#febee9', '#aefda3', '#f5fda3', 
-            '#ecbefe', '#fefdad', '#feadad', '#adb5fe'
+            '#c5fdfa', '#febee9', '#c9d1fd', '#f5fda3', 
+            '#ecbefe', '#c7fbc5', '#feadad', '#adb5fe'
           ],
           borderColor: [
-            '#90fefb', '#febee9', '#aefda3', '#f5fda3', 
-            '#ecbefe', '#fefdad', '#feadad', '#adb5fe'
+            '#a0f0eb', '#fba9dc', '#a9b3f0', '#e3f484', 
+            '#d3a9f5', '#a9e9a7', '#f98b8b', '#8f9ff0'  
           ],
-          borderWidth: 1,
+          borderWidth: 2,
         }]
       };
     },
@@ -228,83 +249,78 @@ computed: {
     },
 
     filteredExpenses() {
-      const currentMonthYear = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-
-  return this.expenses.filter(expense => {
-    const categoryMatch = this.filterCategory === 'all' || expense.category === this.filterCategory;
-    const monthMatch = expense.date && expense.date.startsWith(currentMonthYear);
-    return categoryMatch && monthMatch;
-  });
-},
+      return this.expenses.filter(expense => {
+        const categoryMatch = this.filterCategory === 'all' || expense.category === this.filterCategory;
+        const monthMatch = !this.selectedMonth || 
+          (expense.date && expense.date.startsWith(`${this.selectedYear}-${this.selectedMonth}`));
+        return categoryMatch && monthMatch;
+      });
+    },
 
     totalAmount() {
       return this.filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
     },
 
     currentBudget() {
-    if (!this.getPersonalBudgets || this.getPersonalBudgets.length === 0) return null;
-    const currentMonthYear = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-    return this.getPersonalBudgets.find(
-      b => b.month_year === currentMonthYear
-    ) || { budget_amount: 0 };
-  },
+      return this.getCurrentBudget || { budget_amount: 0 };
+    },
   
-  remainingBudget() {
-    if (!this.currentBudget) return 0;
-    return this.currentBudget.budget_amount - this.totalAmount;
-  },
+    remainingBudget() {
+      if (!this.currentBudget) return 0;
+      return this.currentBudget.budget_amount - this.totalAmount;
+    },
 
-  budgetPercentage() {
-  if (!this.currentBudget || this.currentBudget.budget_amount <= 0) return 0;
-  return Math.min(100, (this.totalAmount / this.currentBudget.budget_amount) * 100);
-},
+    budgetPercentage() {
+      if (!this.currentBudget || this.currentBudget.budget_amount <= 0) return 0;
+      return Math.min(100, (this.totalAmount / this.currentBudget.budget_amount) * 100);
+    },
 
-isBudgetExceeded() {
-  if (!this.currentBudget?.budget_amount) return false;
-  return this.totalAmount > this.currentBudget.budget_amount;
-}, // newwwwwwwwwwwww
-
-watch: {
-  totalAmount(newVal) {
-    if (this.isBudgetExceeded) {
-      this.$notify({
-        title: 'Budget Exceeded',
-        text: 'You have exceeded your monthly budget!',
-        type: 'warning',
-        duration: 0 // 0 means it won't auto-close
-      });
+    isBudgetExceeded() {
+      if (!this.currentBudget?.budget_amount) return false;
+      return this.totalAmount > this.currentBudget.budget_amount;
     }
   },
-  currentBudget: {
-    deep: true,
-    handler() {
+
+  watch: {
+    selectedMonth(newVal) {
+      this.updateSelectedMonthYear();
+    },
+    selectedYear(newVal) {
+      this.updateSelectedMonthYear();
+    },
+    totalAmount(newVal) {
       if (this.isBudgetExceeded) {
         this.$notify({
           title: 'Budget Exceeded',
           text: 'You have exceeded your monthly budget!',
           type: 'warning',
-          duration: 0
+          duration: 0 
         });
       }
     }
-  }
-}
-}, //newwwwwwwwwwww
+  },
 
   created() {
     this.fetchExpenses();
     this.fetchPersonalBudgets();
   },
-  
+
   methods: {
-    ...mapActions(['fetchExpenses', 'fetchPersonalBudgets']),
+    ...mapActions(['fetchExpenses', 'fetchPersonalBudgets', 'setSelectedMonthYear']),
     
     filterExpenses(category) {
       this.filterCategory = category;
     },
-    
-    filterExpensesByDate() {
+
+    selectMonth(month) {
+      this.selectedMonth = month;
       this.filterCategory = 'all';
+    },
+
+    updateSelectedMonthYear() {
+      const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
+      this.setSelectedMonthYear(monthYear);
+      this.fetchExpenses();
     },
     
     formatCurrency(value) {
@@ -319,15 +335,15 @@ watch: {
     },
 
     showBudgetWarning() {
-    this.$notify({
-      title: 'Budget Exceeded',
-      text: `Current spending: ${this.formatCurrency(this.totalAmount)}\nBudget: ${this.formatCurrency(this.currentBudget?.budget_amount)}`,
-      type: 'error',
-      duration: 0
-    });
-  },
+      this.$notify({
+        title: 'Budget Exceeded',
+        text: `Current spending: ${this.formatCurrency(this.totalAmount)}\nBudget: ${this.formatCurrency(this.currentBudget?.budget_amount)}`,
+        type: 'error',
+        duration: 0
+      });
+    },
 
-  async generatePDF() {
+    async generatePDF() {
   try {
     const doc = new jsPDF();
     this.formatCurrency = value => `PHP ${parseFloat(value||0).toFixed(2)}`;
@@ -423,6 +439,62 @@ watch: {
 
 
 <style scoped>
+/* Month/Year Selector Styles */
+.month-year-selector {
+  margin: 1px 0 0px 0; 
+  padding: 15px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.year-selector {
+  margin-bottom: 5px;
+}
+
+.year-selector label {
+  margin-right: 10px;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.year-selector select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 2px solid #336333;
+  background-color: white;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.month-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+}
+
+.month-buttons button {
+  padding: 8px;
+  margin: 3px;
+  border-radius: 6px;
+  background-color: #ffffff;
+  border: 2px solid #336333;
+  transition: all 0.3s ease;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.month-buttons button:hover {
+  background-color: #2a4935;
+  color: white;
+}
+
+.month-buttons button.active {
+  background-color: #2a4935;
+  color: white;
+  border-color: #2a4935;
+}
+
 .text-danger {
   color: #ffffff;
   font-weight: bold;
@@ -471,7 +543,6 @@ watch: {
   overflow: hidden;
   margin-top: 7px;
 }
-
 .progress {
   height: 100%;
   background: linear-gradient(90deg, #4CAF50, #8BC34A);
@@ -572,10 +643,29 @@ button:hover {
   border-radius: 20px;
   width: 70%; 
   min-width: 380px;
-  max-width: 900px; /* Optional: keep for responsiveness */
+  max-width: 900px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
   align-items: flex-start;
   margin-bottom: 10px;
+  overflow-y: auto; /* Enables vertical scrolling when needed */
+  max-height: 105vh; /* Limits height to 80% of viewport height */
+  scrollbar-width: thin; /* For Firefox */
+  scrollbar-color: #2a4935 #ecfcec; /* For Firefox */
+}
+
+/* For Chrome/Edge/Safari */
+.con-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.con-container::-webkit-scrollbar-track {
+  background: #ecfcec;
+  border-radius: 0 20px 20px 0;
+}
+
+.con-container::-webkit-scrollbar-thumb {
+  background-color: #2a4935;
+  border-radius: 20px;
 }
 
 /* Filter Buttons Styling */
@@ -686,4 +776,4 @@ margin-left: 3px;
 background-color: #1e3731;
 }
 
-</style>
+</style> 
