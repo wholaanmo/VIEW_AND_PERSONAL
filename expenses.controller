@@ -1,0 +1,126 @@
+const expenseService = require('../expenses/expenses.service');
+
+module.exports = {
+  addExpense: async (req, res) => {
+    try {
+      const { item_price, expense_type, item_name, personal_budget_id } = req.body;
+      const userId = req.user.userId;
+
+      if (!item_price || !expense_type || !item_name) {
+        return res.status(400).json({
+          success: 0,
+          message: "Missing required fields"
+        });
+      }
+
+      await expenseService.addExpense({
+        userId, 
+        item_price, 
+        expense_type, 
+        item_name, 
+        personal_budget_id
+      });
+
+      return res.status(200).json({
+        success: 1,
+        message: "Expense added successfully"
+      });
+    } catch (err) {
+      let message = "Database error";
+      if (err.message === "The specified personal budget does not exist") {
+        message = err.message;
+      }
+      console.error("Add expense error:", err);
+      return res.status(500).json({
+        success: 0,
+        message: message
+      });
+    }
+  },
+
+  editExpense: async (req, res) => {
+    try {
+      const { item_price, expense_type, item_name } = req.body;
+      const userId = req.user.userId;
+      const id = req.params.id;
+
+      if (!item_price || !expense_type || !item_name) {
+        return res.status(400).json({
+          success: 0,
+          message: "Missing required fields"
+        });
+      }
+
+      await expenseService.editExpense({
+        id, 
+        userId, 
+        item_price, 
+        expense_type, 
+        item_name
+      });
+
+      return res.json({
+        success: 1,
+        message: "Expense updated successfully"
+      });
+    } catch (err) {
+      let message = "Database error";
+      if (err.message === "Expense not found or unauthorized") {
+        message = err.message;
+      }
+      console.error("Edit expense error:", err);
+      return res.status(500).json({
+        success: 0,
+        message: message
+      });
+    }
+  },
+
+  deleteExpense: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.userId;
+
+      await expenseService.deleteExpense(id, userId);
+
+      return res.json({
+        success: 1,
+        message: "Expense deleted successfully"
+      });
+    } catch (err) {
+      console.error("Delete expense error:", err);
+      return res.status(500).json({
+        success: 0,
+        message: err.message || "Database error"
+      });
+    }
+  },
+
+  getExpenses: async (req, res) => {
+    try {
+      const userId = req.user.userId;
+      const monthYear = req.query.monthYear || 
+      `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!/^\d{4}-\d{2}$/.test(monthYear)) {
+        return res.status(400).json({
+          success: 0,
+          message: "Invalid monthYear format (expected YYYY-MM)"
+        });
+      }
+      
+      const results = await expenseService.getExpensesByUserAndMonth(userId, monthYear);
+
+      return res.json({
+        success: 1,
+        data: results
+      });
+    } catch (err) {
+      console.error("Get expenses error:", err);
+      return res.status(500).json({
+        success: 0,
+        message: "Database error"
+      });
+    }
+  }
+};
