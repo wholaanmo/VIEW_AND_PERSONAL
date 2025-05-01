@@ -96,7 +96,8 @@
          <div class="form-group">
            <label>EXPENSE TYPE:</label>
            <select v-model="expenseType" required @change="checkExpenseType">
-             <option value="Food">Food</option>
+            <option value="">Select a category</option> 
+            <option value="Food">Food</option>
              <option value="Bill">Bill</option>
              <option value="Transportation">Transportation</option>
              <option value="Entertainment">Entertainment</option>
@@ -104,6 +105,16 @@
              <option value="Shopping">Shopping</option> 
              <option value="Other">Other</option>
             </select>
+
+            <div v-if="showPredictionFeedback" class="prediction-feedback">
+            <p>Did you mean <strong>{{ expenseType }}</strong>?</p>
+            <button @click="submitPredictionFeedback(true)" class="feedback-btn correct">
+              Yes, correct
+            </button>
+            <button @click="expenseType = ''; showPredictionFeedback = false" class="feedback-btn incorrect">
+              No, select manually
+            </button>
+          </div>
          </div>
  
          <div v-if="expenseType === 'Other'" class="form-group">
@@ -113,8 +124,9 @@
  
          <div class="form-group">
            <label>ITEM NAME:</label>
-           <input type="text" v-model="itemName" placeholder="Enter item name" required />
-         </div>
+           <input type="text" v-model="itemName" @input="onItemNameChange" placeholder="Enter item name" required />
+           <small v-if="isPredicting" class="predicting-text">Predicting category...</small>
+          </div>
  
          <div class="form-group">
            <label>ITEM PRICE:</label>
@@ -200,7 +212,10 @@
        currentMonthYear: this.getCurrentMonthYear(),
        showBudgetExceededAlert: false,
        alertDismissed: false,
-       lastCheckedMonthYear: null
+       lastCheckedMonthYear: null,
+       isPredicting: false,
+       showPredictionFeedback: false,
+       predictionDebounce: null
      };
    },
    
@@ -304,6 +319,112 @@ watch: {
        'updateBudget',
        'setSelectedMonthYear' 
      ]),
+     onItemNameChange() {
+      clearTimeout(this.predictionDebounce);
+      
+      // Only predict if item name has at least 3 characters and no category is selected
+      if (this.itemName.length < 3 || this.expenseType) return;
+      
+      this.predictionDebounce = setTimeout(() => {
+        this.predictCategory();
+      }, 500); // Debounce to avoid too many requests
+    },
+    
+    async predictCategory() {
+      if (this.isPredicting || !this.itemName || this.itemName.length < 3) return;
+      
+      try {
+        this.isPredicting = true;
+        
+        const response = await this.$axios.post('/api/predictions/predict', {
+          item_name: this.itemName
+        }, {
+          headers: { 
+            Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+          }
+        });
+        
+        if (response.data.success) {
+      const predictedCategory = response.data.data.expense_type;
+      this.expenseType = predictedCategory;
+      
+      this.showPredictionFeedback = predictedCategory === 'Other' && 
+        this.shouldSuggestAlternative(this.itemName);
+    }
+  } catch (error) {
+    console.error('Prediction failed:', error);
+  } finally {
+    this.isPredicting = false;
+  }
+},
+
+shouldSuggestAlternative(itemName) {
+  const lowerItem = itemName.toLowerCase();
+  const words = lowerItem.split(/\s+/);
+  
+  const categoryKeywords = {
+        Food: [
+          "burger", "burgei", "burgir", "hamburger", "jollibee", 
+          "pizza", "piza", "pasta", "sandwich", "fries", "milktea",
+          "rice", "noodles", "chicken", "mcdo", "kfc"
+        ],
+        Bill: [
+          "electric bill", "water bill", "internet bill", "phone bill",
+          "cable bill", "utility bill", "rent", "mortgage", "electricity",
+          "water payment", "internet payment"
+        ],
+        Transportation: [
+          "gasoline", "gas", "petrol", "diesel", "jeepney fare",
+          "bus fare", "mrt fare", "grab", "angkas", "taxi",
+          "lrt fare", "tricycle fare", "parking fee", "car maintenance"
+        ],
+        Entertainment: [
+          "movie tickets", "netflix", "spotify", "youtube premium",
+          "concert tickets", "videoke", "arcade", "theme park",
+          "movie", "cinema", "streaming", "game", "video game"
+        ],
+        Healthcare: [
+          "doctor visit", "hospital", "medicine", "vitamins",
+          "checkup", "dentist", "vaccine", "medical supplies",
+          "pharmacy", "drugstore", "clinic", "xray", "laboratory"
+        ],
+        Shopping: [
+          'shoes', 'clothes', 'shirt', 'pants', 'dress',
+          'gadget', 'phone', 'laptop', 'accessories', 'bag',
+          'watch', 'perfume', 'makeup', 'groceries', 'market',
+          'office chair', 'desk', 'monitor', 'keyboard', 'mouse',
+          'furniture', 'stationery', 'notebook', 'pen', 'backpack'
+        ]
+      };
+  const isUnknown = !Object.values(categoryKeywords).some(keywords => 
+    keywords.some(keyword =>
+      keyword.includes(' ') ? 
+        lowerItem.includes(keyword) : 
+        words.includes(keyword)
+    )
+  );
+
+  return isUnknown;
+},
+    async submitPredictionFeedback(isCorrect) {
+      try {
+        if (!isCorrect) {
+          // Send correction to backend to learn
+          await this.$axios.post('/api/predictions/learn', {
+            item_name: this.itemName,
+            expense_type: this.expenseType 
+          }, {
+            headers: { 
+              Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+            }
+          });
+        }
+        
+        this.showPredictionFeedback = false;
+      } catch (error) {
+        console.error('Feedback submission failed:', error);
+      }
+    },
 
      checkBudgetStatus() {
   console.log('--- Checking Budget Status ---');
@@ -521,8 +642,21 @@ watch: {
     } else {
       result = await this.addExpense(expenseData);
     }
-    
+
     if (result.success) {
+      try {
+            await this.$axios.post('/api/predictions/learn', {
+              item_name: this.itemName,
+              expense_type: this.expenseType 
+            }, {
+              headers: { 
+                Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+              }
+            });
+          } catch (learnError) {
+        console.error('Failed to send learning data:', learnError);
+      }
+    
       this.showExpenseSuccessMessage(result.message || (this.editId ? 'Expense updated!' : 'Expense added!'));
       this.resetForm();
       
@@ -660,6 +794,57 @@ editExpense(expense) {
 
  
 <style scoped>
+.predicting-text {
+  color: #555;
+  font-style: italic;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: block;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+.prediction-feedback {
+  margin-top: 10px;
+  padding: 5px;
+  background: linear-gradient(to right, #fafafa, #f0f0f0);
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 0.95rem;
+}
+
+.feedback-btn {
+  margin-right: 8px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.3s ease, transform 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.feedback-btn.correct {
+  background: #4CAF50;
+  color: white;
+}
+
+.feedback-btn.correct:hover {
+  background: #45a049;
+  transform: scale(1.05);
+}
+
+.feedback-btn.incorrect {
+  background: #f44336;
+  color: white;
+}
+
+.feedback-btn.incorrect:hover {
+  background: #e53935;
+  transform: scale(1.05);
+}
+
+
 .budget-alert {
   position: fixed;
   top: 290px;
