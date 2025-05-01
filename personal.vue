@@ -156,7 +156,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="expense in expenses" :key="expense?.id">
+              <tr v-for="expense in filteredExpenses" :key="expense?.id">
   <td>{{ expense?.expense_type || 'N/A' }}</td>
   <td>{{ expense?.item_name || 'N/A' }}</td>
   <td>{{ expense?.item_price ? formatPHP(expense.item_price) : '₱0.00' }}</td>
@@ -220,18 +220,30 @@
    },
    
    computed: {
-     ...mapState(['expenses', 'personalBudgets', 'usdExchangeRate', 'selectedMonthYear']),
-     ...mapGetters(['getTotalAmount', 'getCurrentBudget', 'getAvailableMonths']),
- 
-     selectedMonthYear: {
-    get() {
-      return this.$store.state.selectedMonthYear || 
-             this.currentMonthYear;
-    },
-    set(value) {
-      this.$store.commit('SET_SELECTED_MONTH_YEAR', value);
-    }
+    ...mapState(['addExpenses', 'personalBudgets', 'usdExchangeRate']),
+  ...mapGetters(['getTotalAmount', 'getCurrentBudget', 'getAvailableMonths', 'getAddExpenseMonthYear']),
+
+  shouldShowExpenses() {
+    const now = new Date();
+    const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return this.selectedMonthYear === currentMonthYear;
   },
+
+  filteredExpenses() {
+    if (!this.shouldShowExpenses) return []; // Hide if not current month
+    return this.addExpenses;; // Show if current month
+  },
+
+  selectedMonthYear: {
+  get() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  },
+  set(value) {
+    // Prevent month change in Add Expense page
+    console.log("Month selection is locked in Add Expense page");
+  }
+},
 
   currentBudget() {
     const budget = this.$store.getters.getCurrentBudget;
@@ -278,17 +290,20 @@
     this.isLoading = true;
     this.alertDismissed = localStorage.getItem('budgetAlertDismissed') === 'true';
     
+    const now = new Date();
+    const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    await this.setSelectedMonthYear(currentMonthYear);
+
     this.checkMonthChange();
 
-    if (!this.$store.state.selectedMonthYear) {
-      await this.setSelectedMonthYear(this.currentMonthYear);
-    }
-    
-    // Then fetch data
+  //  if (!this.$store.state.selectedMonthYear) {
+  //    await this.setSelectedMonthYear(this.currentMonthYear);
+   // }
+
     await Promise.all([
       this.fetchExchangeRate(),
       this.fetchPersonalBudgets(),
-      this.fetchExpenses()
+      this.fetchAddExpenses() 
     ]);
     
     // Add this line to check initial budget status
@@ -314,7 +329,7 @@
       if (newVal !== oldVal) {
         try {
           await Promise.all([
-            this.fetchExpenses(),
+            this.fetchAddExpenses(), 
             this.fetchPersonalBudgets()
           ]);
           this.checkBudgetStatus();
@@ -350,7 +365,8 @@
        'deleteExpense',
        'addBudget',
        'updateBudget',
-       'setSelectedMonthYear' 
+       'setSelectedMonthYear' ,
+       'fetchAddExpenses' 
      ]),
     checkMonthChange() {
     const lastAccessedMonth = localStorage.getItem('lastAccessedMonth');
@@ -365,7 +381,7 @@
         this.setSelectedMonthYear(newMonthYear);
         
         Promise.all([
-      this.fetchExpenses(),
+      this.fetchAddExpenses(), 
       this.fetchPersonalBudgets()
     ]).then(() => {
       this.checkBudgetStatus();
@@ -685,14 +701,25 @@ shouldSuggestAlternative(itemName) {
     const currentDate = new Date();
     const currentMonthYear = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
 
+    let budget = this.personalBudgets.find(b => b.month_year === currentMonthYear);
+    
+    if (!budget) {
+      // Create a default budget if none exists
+      budget = {
+        id: null,
+        month_year: currentMonthYear,
+        budget_amount: 0
+      };
+    }
+
     const expenseData = {
       item_price: Number(this.itemPrice), 
       expense_type: this.expenseType === 'Other' ? this.customExpenseType : this.expenseType,
       item_name: this.itemName,
-      personal_budget_id: this.currentBudget.id,
+      personal_budget_id: budget.id,
       expense_date: currentDate.toISOString()
     };
-
+    
     let result;
     if (this.editId) {
       result = await this.updateExpense({
@@ -722,7 +749,7 @@ shouldSuggestAlternative(itemName) {
       
       // Wait for both the expenses and budget to be refreshed
       await Promise.all([
-        this.fetchExpenses(),
+        this.fetchAddExpenses(),
         this.fetchPersonalBudgets()
       ]);
       
