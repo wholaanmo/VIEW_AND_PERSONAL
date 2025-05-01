@@ -10,14 +10,40 @@ export default createStore({
     globalAlert: null
   },
   getters: {
-    getExpenses: state => state.expenses,
+    getExpenses: state => {
+      if (!state.expenses || !Array.isArray(state.expenses)) {
+        return [];
+      }
+
+      const monthYear = state.selectedMonthYear || 
+                       `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      
+      return state.expenses.filter(expense => {
+        if (!expense.expense_date) {
+          const now = new Date();
+          const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+          return monthYear === currentMonthYear;
+        }
+        
+        try {
+          const expenseDate = new Date(expense.expense_date);
+          const expenseMonthYear = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}`;
+          return expenseMonthYear === monthYear;
+        } catch (e) {
+          console.error('Error parsing expense date:', expense.expense_date, e);
+          return true; 
+        }
+      });
+    },
     getPersonalBudgets: state => state.personalBudgets,
-    getTotalAmount: state => {
-      console.log('Calculating total amount from expenses:', state.expenses);
-      return state.expenses.reduce((sum, expense) => {
+
+    getTotalAmount: (state, getters) => {
+      const filteredExpenses = getters.getExpenses;
+      console.log('Calculating total amount from filtered expenses:', filteredExpenses);
+      return filteredExpenses.reduce((sum, expense) => {
         const price = Number(expense?.item_price) || 0;
         return sum + price;
-      }, 0); // Start with 0 as initial value
+      }, 0);
     },
     getCurrentBudget: state => {
       try {
@@ -77,7 +103,6 @@ export default createStore({
           return;
         }
     
-        // Create a validated expense object with defaults
         const validatedExpense = {
           id: expense.id || Date.now().toString(),
           item_price: Number(expense.item_price) || 0,
@@ -141,11 +166,15 @@ export default createStore({
         return { success: false, message: error.message }
       }
     },
-    async fetchExpenses({ commit }) {
+    async fetchExpenses({ commit, state }) {
       try {
         const response = await axios.get('/api/expenses', {
-          headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` }
-        })
+          headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
+          params: {
+            monthYear: state.selectedMonthYear
+          }
+        });
+        
         commit('SET_EXPENSES', response.data.data || [])
         return { success: true }
       } catch (error) {
