@@ -228,12 +228,14 @@ computed: {
     },
 
     filteredExpenses() {
-      return this.expenses.filter(expense => {
-        const categoryMatch = this.filterCategory === 'all' || expense.category === this.filterCategory;
-        const monthMatch = !this.filterMonth || (expense.date && expense.date.startsWith(this.filterMonth));
-        return categoryMatch && monthMatch;
-      });
-    },
+      const currentMonthYear = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
+  return this.expenses.filter(expense => {
+    const categoryMatch = this.filterCategory === 'all' || expense.category === this.filterCategory;
+    const monthMatch = expense.date && expense.date.startsWith(currentMonthYear);
+    return categoryMatch && monthMatch;
+  });
+},
 
     totalAmount() {
       return this.filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -684,4 +686,4 @@ margin-left: 3px;
 background-color: #1e3731;
 }
 
-</style> 
+</style>
