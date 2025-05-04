@@ -1,5 +1,6 @@
 <template>
   <Navigation />
+
   <div class="group-container">
     
     <div v-if="loading" class="loading-container">
@@ -25,6 +26,9 @@
           <span>Created by: {{ creatorName || 'Loading...' }}</span>
           <span v-if="group.created_at">Created on: {{ formatDate(group.created_at) }}</span>
         </div>
+        <button @click="goToGroupManagement" class="manage-groups-btn">
+            <i class="fas fa-users-cog"></i> Manage Groups
+          </button>
       </div>
 
       <div class="group-tabs">
@@ -321,9 +325,14 @@ export default {
   components: { Navigation },
   beforeRouteEnter(to, from, next) {
     if (!to.params.groupId) {
-      next('/GC');
+      next('/GC'); // Redirect to GC if no groupId
     } else {
-      next();
+      next(vm => {
+        // Additional checks after component instance is created
+        if (!vm.hasGroupAccess) {
+          vm.$router.replace('/GC');
+        }
+      });
     }
   },
   data() {
@@ -372,6 +381,11 @@ export default {
 
     group() {
       return this.currentGroup || {};
+    },
+
+    hasGroupAccess() {
+      const user = JSON.parse(localStorage.getItem('user'));
+      return this.group?.id && this.members?.some(m => m.id === user?.id);
     }
   },
 
@@ -391,8 +405,8 @@ export default {
     return;
   }
 
-  // Proceed with data loading
   try {
+    await this.initializeGroupData();
     await this.fetchGroupData();
     await this.loadExpenses();
     await this.loadSummary();
@@ -403,6 +417,10 @@ export default {
       message: 'Failed to load group data',
       type: 'error'
     });
+
+    if (err.message.includes('initialization')) {
+      this.$router.push('/GC');
+    }
   }
 },
 
@@ -419,6 +437,49 @@ export default {
       'updateGroupName',
       'deleteGroup'
     ]),
+    goToGroupManagement() {
+      // Add a flag to indicate intentional navigation
+      this.$router.push({ 
+        name: 'GC',
+        query: { fromGroup: 'true' } 
+      });
+    },
+
+    async initializeGroupData() {
+      const user = JSON.parse(localStorage.getItem('user'));
+      const token = localStorage.getItem('jsontoken');
+
+      if (!user || !token) {
+        this.$router.push('/login');
+        return;
+      }
+
+      if (!this.$route.params.groupId) {
+        this.$router.push('/GC');
+        return;
+      }
+
+      try {
+        await Promise.all([
+          this.fetchGroupData(),
+          this.loadExpenses(),
+          this.loadSummary()
+        ]);
+        
+        // Verify access after loading
+        if (!this.hasGroupAccess) {
+          this.$router.replace('/GC');
+        }
+      } catch (err) {
+        console.error('Failed to load group data:', err);
+        this.$notify({
+          title: 'Error',
+          message: 'Failed to load group data',
+          type: 'error'
+        });
+        this.$router.replace('/GC');
+      }
+    },
     
     async fetchGroupData() {
  const user = JSON.parse(localStorage.getItem('user'));
@@ -432,8 +493,14 @@ export default {
     console.log('Fetching group data for groupId:', this.groupId);
     await this.fetchGroup(this.groupId);
     console.log('Group data fetched successfully');
+    
+    if (!this.currentGroup?.id) {
+      this.$router.replace('/GC');
+      return;
+    }
+
   } catch (err) {
-    console.error('Error fetching group data:', {
+    console.error('Error fetching group:', err, {
       error: err,
       response: err.response?.data
     });
@@ -446,9 +513,9 @@ export default {
 
     if (err.response?.status === 401 || err.message.includes('not logged in')) {
       this.$router.push('/login');
-    } else if (err.message.includes('Group data is missing')) {
-      // Handle case where group doesn't exist or user doesn't have access
-      this.$router.push('/GC');
+    } else {
+      // Redirect to group center for any other error
+      this.$router.replace('/GC');
     }
   }
 },
@@ -473,10 +540,13 @@ export default {
       monthYear 
     });
   } catch (err) {
-    this.summaryError = err.message || 'Failed to load summary';
-    console.error('Failed to load summary:', err);
+    this.summaryError = err.response?.data?.message || err.message || 'Failed to load summary';
+    console.error('Failed to load summary:', {
+      error: err,
+      response: err.response?.data
+    });
 
-      this.$notify({
+    this.$notify({
       title: 'Error',
       message: this.summaryError,
       type: 'error',
@@ -715,10 +785,19 @@ export default {
 </script>
 
 <style scoped>
+.manage-groups-btn {
+  background: #4CAF50;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 20px;
+}
 .group-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 120px 20px 20px;
 }
 
 .loading-container {
@@ -754,6 +833,7 @@ export default {
   padding: 20px;
   background-color: #ffebee;
   border-radius: 5px;
+  margin-top: 100px;
 }
 
 .error-message {
@@ -775,12 +855,6 @@ export default {
   padding: 20px;
   border-radius: 8px;
   margin-bottom: 20px;
-  margin-top: 100px;
-}
-
-.group-header h1 {
-  margin: 0;
-  color: #333;
 }
 
 .group-code {
