@@ -1,1551 +1,1248 @@
 <template>
-  <navigation/>
-  <div class="main-layout">
-        <!-- Group header if in group mode -->
-        <div v-if="isGroupExpense && currentGroup" class="group-header">
-      <h2>{{ currentGroup.name }}</h2>
-      <div v-if="currentUserRole === 'admin'">
-        <button @click="showInviteDialog = true">Invite Members</button>
-        <button @click="deleteGroup">Delete Group</button>
-      </div>
+  <Navigation />
+  <div class="group-container">
+    
+    <div v-if="loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading group data...</p>
     </div>
 
-    <div v-if="showBudgetExceededAlert" class="budget-alert">
-      <div class="alert-content">
-        <span class="alert-icon">⚠️</span>
-        <span>You have exceeded your monthly budget!</span>
-        <button @click="dismissAlert" class="dismiss-btn">×</button>
-      </div>
-      </div>
-    <div v-if="error" class="error-message">
-        An error occurred: {{ error }}
-        <button @click="resetError">Try Again</button>
-      </div>
-      <div v-else>
-    <div class="top-row"> 
-  <div class="budget-container">
-    <div class="budget-content">
-    <div v-if="budgetSuccessMessage" class="budget-success-message" :class="{ hide: budgetHideMessage }">
-      {{ budgetSuccessMessage }}
-    </div>
-      <div class="budget-header"> <!--NEWWWWWWWWWW-->
-      <h3>Monthly Budget</h3>
-      <button 
-        v-if="!hasExistingBudget && !isAddingBudget" 
-        @click="showAddBudgetForm" 
-        class="add-budget-btn"
-      >
-        Add Budget
-      </button>
-      <button 
-        v-if="hasExistingBudget && !isEditingBudget" 
-        @click="showEditBudgetForm" 
-        class="edit-budget-btn"
-      >
-        Edit Budget
-      </button>
+    <div v-else-if="error" class="error-container">
+      <p class="error-message">{{ error }}</p>
+      <button @click="fetchGroupData" class="retry-button">Retry</button>
     </div>
 
-      <div v-if="!isAddingBudget && !isEditingBudget" class="budget-display">
-            <div class="budget-info">
-              <div class="budget-month-row"> <!--NEWWWWWWWWWWW-->
-                <span class="budget-label">Month-Year:</span>
-                <span class="budget-month">{{ formatMonthYear(safeSelectedMonthYear) }}</span>
-              </div>
-              <div class="budget-amount-row">
-                <span class="budget-label">Budget Amount:</span>
-              <span class="budget-amount">{{ formatPHP(currentBudget.budget_amount) }}</span>
+    <div v-else class="group-content">
+      <div class="group-header">
+        <h1>{{ group.group_name || 'Loading...' }}</h1>
+        <div class="group-code" v-if="group.group_code">
+          <span>Group Code: {{ group.group_code }}</span>
+          <button @click="copyGroupCode" class="copy-button">
+            <i class="far fa-copy"></i>
+          </button>
+        </div>
+        <div class="group-meta">
+          <span>Created by: {{ creatorName || 'Loading...' }}</span>
+          <span v-if="group.created_at">Created on: {{ formatDate(group.created_at) }}</span>
+        </div>
+      </div>
+
+      <div class="group-tabs">
+        <button 
+          @click="activeTab = 'expenses'" 
+          :class="{ active: activeTab === 'expenses' }"
+        >
+          Expenses
+        </button>
+        <button @click="activeTab = 'members'" :class="{ active: activeTab === 'members' }">
+        Members ({{ members?.length || 0 }})
+        </button>
+        <button 
+          @click="activeTab = 'summary'" 
+          :class="{ active: activeTab === 'summary' }"
+        >
+          Summary
+        </button>
+        <button 
+          v-if="isAdmin"
+          @click="activeTab = 'settings'" 
+          :class="{ active: activeTab === 'settings' }"
+        >
+          Settings
+        </button>
+      </div>
+
+      <div class="tab-content">
+        <!-- Expenses Tab -->
+        <div v-if="activeTab === 'expenses'" class="expenses-tab">
+          <div class="expense-controls">
+            <div class="month-selector">
+              <button @click="prevMonth">&lt;</button>
+              <span>{{ currentMonthYear }}</span>
+              <button @click="nextMonth">&gt;</button>
             </div>
-        </div>
-        </div>
-
-        <!--FOR ADDING BUDGET-->
-        <div v-if="isAddingBudget" class="budget-form">
-        <div class="form-group">
-          <label for="monthYear">Month-Year:</label>
-          <span class="uneditable-month">{{ formatMonthYear(currentMonthYear) }}</span>
-        </div>
-        <div class="form-group">
-          <label for="budgetAmount">Budget Amount (₱):</label>
-          <input type="number" id="budgetAmount" v-model="budgetAmount" placeholder="Enter budget amount" step="0.01" min="0">
-        </div>
-
-        <div class="budget-form-buttons"> <!--NEWWWWWWWW-->
-          <button class="budget-btn cancel-btn" @click="cancelBudgetForm">Cancel </button>
-            <button class="budget-btn" @click="submitAddBudget">Set Budget</button>
-          </div>
-    </div>
-
-            <!-- FOR EDITING BUDGET -->
-            <div v-if="isEditingBudget" class="budget-form">
-          <div class="form-group">
-            <label>Month-Year:</label>
-            <span class="uneditable-month">{{ formatMonthYear(safeSelectedMonthYear) }}</span>
-          </div>
-          <div class="form-group">
-            <label for="editBudgetAmount">Budget Amount (₱):</label>
-            <input type="number" id="editBudgetAmount" v-model="budgetAmount" placeholder="Enter budget amount" step="0.01" min="0" >
-          </div>
-          <div class="budget-form-buttons">
-            <button class="budget-btn cancel-btn" @click="cancelBudgetForm">Cancel</button>
-            <button class="budget-btn" @click="updateBudget">Update Budget</button>
-          </div>
-        </div>
-</div>
-</div>
-
-
-  <!--ADDING EXPENSESSSS-->
-    <div class="content-wrapper">
-      <form @submit.prevent="handleSubmit" class="expense-form"> <!-- CLASS IS NEWWWWWWWWWWW-->
-        <div v-if="isGroupExpense" class="form-group">
-        <label>Member Name:</label>
-        <input type="text" v-model="MemberName" required />
-      </div> 
-        <input type="hidden" v-model="action" />
-         <input type="hidden" v-if="editId" v-model="editId" />
-
-
-         <div class="form-group">
-           <label>EXPENSE TYPE:</label>
-           <select v-model="expenseType" required @change="checkExpenseType">
-            <option value="">Select a category</option> 
-            <option value="Food">Food</option>
-             <option value="Bill">Bill</option>
-             <option value="Transportation">Transportation</option>
-             <option value="Entertainment">Entertainment</option>
-             <option value="Healthcare">Healthcare</option>
-             <option value="Shopping">Shopping</option> 
-             <option value="Other">Other</option>
-            </select>
-
-            <div v-if="showPredictionFeedback" class="prediction-feedback">
-            <p>Did you mean <strong>{{ expenseType }}</strong>?</p>
-            <button @click="submitPredictionFeedback(true)" class="feedback-btn correct">
-              Yes, correct
-            </button>
-            <button @click="expenseType = ''; showPredictionFeedback = false" class="feedback-btn incorrect">
-              No, select manually
+            <button @click="showAddExpenseModal = true" class="add-expense-button">
+              <i class="fas fa-plus"></i> Add Expense
             </button>
           </div>
-         </div>
- 
-         <div v-if="expenseType === 'Other'" class="form-group">
-           <label>Custom Expense Type:</label>
-           <input type="text" v-model="customExpenseType" placeholder="Enter custom expense type" />
-         </div>
- 
-         <div class="form-group">
-           <label>ITEM NAME:</label>
-           <input type="text" v-model="itemName" @input="onItemNameChange" placeholder="Enter item name" required />
-           <small v-if="isPredicting" class="predicting-text">Predicting category...</small>
+
+          <div v-if="expensesLoading" class="loading-expenses">
+            <div class="spinner small"></div>
           </div>
- 
-         <div class="form-group">
-           <label>ITEM PRICE:</label>
-           <input type="number" v-model.number="itemPrice" placeholder="Enter item price" required step="0.01" />
-         </div>
- 
-         <button class="btn" type="submit">{{ editId ? 'Update Expense' : 'Add Expense' }}</button>
-         <div v-if="expenseSuccessMessage" class="expense-success-message" :class="{ hide: expenseHideMessage }">{{ expenseSuccessMessage }}</div>
-      </form>
-
-      </div>
-      </div>
-
-      <!--YOUR LIST OF EXPENSES-->
-      <div class="expenses-container">
-      <div class="expenses-section"> 
-        <h3>Your Expenses</h3> 
-         <div class="expenses-table"> 
-          <table>
-            <thead>
-              <tr>
-                <th>Expense Type</th>
-                <th>Item Name</th>
-                <th>Item Price</th>
-                <th>Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="expense in filteredExpenses" :key="expense?.id">
-  <td>{{ expense?.expense_type || 'N/A' }}</td>
-  <td>{{ expense?.item_name || 'N/A' }}</td>
-  <td>{{ expense?.item_price ? formatPHP(expense.item_price) : '₱0.00' }}</td>
-  <td>{{ formatDate(expense?.expense_date) }}</td>
-  <td class="actions">
-    <button @click="editExpense(expense)" class="edit-btn">Edit</button>
-    <button @click="deleteExpenseHandler(expense?.id)" class="delete-btn">Delete</button>
-                </td>
-                </tr>
-            </tbody>
-          </table>
+          
+          <div v-else-if="expensesError" class="error-message">
+            {{ expensesError }}
+          </div>
+          
+          <div v-else-if="!expenses || expenses.length === 0" class="no-expenses">
+  <p>No expenses recorded for {{ currentMonthYear }}</p>
+</div>
+          
+          <div v-else class="expenses-list">
+            <div class="expense-item" v-for="expense in expenses" :key="expense.id">
+              <div class="expense-info">
+                <span class="expense-name">{{ expense.item_name }}</span>
+                <span class="expense-user">{{ expense.user_name }}</span>
+                <span class="expense-type">{{ expense.expense_type }}</span>
+              </div>
+              <div class="expense-amount">
+                ₱{{ expense.item_price.toFixed(2) }}
+                <div class="expense-actions" v-if="canEditExpense(expense)">
+                  <button @click="editExpense(expense)" class="action-button edit">
+                    <i class="fas fa-edit"></i>
+                  </button>
+                  <button @click="confirmDeleteExpense(expense)" class="action-button delete">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-       </div>
-       
-     <div class="total">
-      Total: <strong>₱{{ totalAmount.toFixed(2) }}</strong> (≈ {{ formatUsd(convertPhpToUsd(totalAmount)) }} USD)
-     </div>
+
+        <!-- Members Tab -->
+        <div v-if="activeTab === 'members'" class="members-tab">
+          <div class="members-list">
+            <div v-for="member in members" :key="member.id" class="member-item">
+              <div class="member-info">
+                <span class="member-name">{{ member.username }}</span>
+                <span class="member-email">{{ member.email }}</span>
+              </div>
+              <div class="member-role">
+                <span :class="['role-badge', member.role]">{{ member.role }}</span>
+                <button 
+                  v-if="isAdmin && member.role !== 'admin'"
+                  @click="removeMember(member)"
+                  class="remove-button"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div v-if="isAdmin" class="invite-section">
+            <h3>Invite New Member</h3>
+            <div class="invite-form">
+              <input 
+                v-model="inviteEmail" 
+                type="email" 
+                placeholder="Enter email address"
+                class="email-input"
+              >
+              <button @click="sendInvite" class="invite-button">
+                Send Invite
+              </button>
+            </div>
+            <p v-if="inviteError" class="error-message">{{ inviteError }}</p>
+            <p v-if="inviteSuccess" class="success-message">{{ inviteSuccess }}</p>
+          </div>
+        </div>
+
+        <!-- Summary Tab -->
+        <div v-if="activeTab === 'summary'" class="summary-tab">
+          <div class="summary-header">
+            <h3>Summary for {{ currentMonthYear }}</h3>
+            <div v-if="summaryLoading" class="loading-message">
+             Loading summary data...
+            </div>
+            <div v-else class="total-expenses">
+              Total Expenses: ₱{{ (summary?.total || 0).toFixed(2) }}
+            </div>
+          </div>
+
+          <div v-if="summaryLoading" class="loading-summary">
+          <div class="spinner small"></div>
+          </div>
+
+          <div v-else-if="summaryError" class="error-message">
+          {{ summaryError }}
+          </div>
+          
+          <div v-else class="summary-grid">
+            <div class="summary-card">
+              <h4>By Member</h4>
+              <div v-if="!summary.byMember || summary.byMember.length === 0">
+                <p>No member data available</p>
+              </div>
+
+              <div v-else class="member-summary" v-for="member in summary?.byMember || []" :key="member.user_id">
+                <span class="member-name">{{ member.name }}</span>
+                <span class="member-amount">₱{{ member.total.toFixed(2) }}</span>
+                <div class="progress-bar">
+                  <div 
+                    class="progress-fill" 
+                    :style="{ width: getPercentage(member.total, summary.total) + '%' }">
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="summary-card">
+              <h4>By Category</h4>
+              <div v-if="!summary.byCategory || summary.byCategory.length === 0">
+               <p>No category data available</p>
+              </div>
+              <div v-else class="category-summary" v-for="cat in summary?.byCategory || []" :key="cat.expense_type">
+                <span class="category-name">{{ cat.expense_type }}</span>
+                <span class="category-amount">₱{{ cat.total.toFixed(2) }}</span>
+                <div class="progress-bar">
+                  <div 
+                    class="progress-fill" 
+                    :style="{ width: getPercentage(cat.total, summary.total) + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Tab (Admin Only) -->
+        <div v-if="activeTab === 'settings' && isAdmin" class="settings-tab">
+          <div class="settings-section">
+            <h3>Group Settings</h3>
+            <div class="setting-item">
+              <label>Group Name</label>
+              <input v-model="group.group_name" type="text" class="setting-input">
+              <button @click="updateGroupName" class="save-button">Save</button>
+            </div>
+          </div>
+          
+          <div class="danger-zone">
+            <h3>Danger Zone</h3>
+            <div class="danger-item">
+              <p>Delete this group permanently</p>
+              <button @click="confirmDeleteGroup" class="delete-button">
+                Delete Group
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Expense Modal -->
+    <div v-if="showAddExpenseModal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Add New Expense</h3>
+          <button @click="closeModal" class="close-button">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="submitExpense">
+            <div class="form-group">
+              <label>Item Name</label>
+              <input v-model="newExpense.item_name" type="text" required>
+            </div>
+            <div class="form-group">
+              <label>Amount</label>
+              <input v-model="newExpense.item_price" type="number" step="0.01" min="0" required>
+            </div>
+            <div class="form-group">
+              <label>Category</label>
+              <select v-model="newExpense.expense_type" required>
+                <option value="Food">Food</option>
+                <option value="Transportation">Transportation</option>
+                <option value="Entertainment">Entertainment</option>
+                <option value="Utilities">Utilities</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-actions">
+              <button type="button" @click="closeModal" class="cancel-button">Cancel</button>
+              <button type="submit" class="submit-button">Add Expense</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Expense Modal -->
+    <div v-if="showEditExpenseModal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Edit Expense</h3>
+          <button @click="closeModal" class="close-button">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="updateExpense">
+            <div class="form-group">
+              <label>Item Name</label>
+              <input v-model="editingExpense.item_name" type="text" required>
+            </div>
+            <div class="form-group">
+              <label>Amount</label>
+              <input v-model="editingExpense.item_price" type="number" step="0.01" min="0" required>
+            </div>
+            <div class="form-group">
+              <label>Category</label>
+              <select v-model="editingExpense.expense_type" required>
+                <option value="Food">Food</option>
+                <option value="Transportation">Transportation</option>
+                <option value="Entertainment">Entertainment</option>
+                <option value="Utilities">Utilities</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-actions">
+              <button type="button" @click="closeModal" class="cancel-button">Cancel</button>
+              <button type="submit" class="submit-button">Update Expense</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div v-if="showConfirmationModal" class="modal-overlay">
+      <div class="modal-content confirmation-modal">
+        <div class="modal-header">
+          <h3>{{ confirmationTitle }}</h3>
+          <button @click="closeModal" class="close-button">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>{{ confirmationMessage }}</p>
+          <div class="confirmation-actions">
+            <button @click="closeModal" class="cancel-button">Cancel</button>
+            <button @click="confirmAction" class="confirm-button">Confirm</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-  </div>
- </template>
- 
- <script>
- import Navigation from "./navigation.vue";
- import { mapState, mapGetters, mapActions } from 'vuex'
- 
- export default {
-   name: 'Group',
-   components: { Navigation },
-   props: {
-    groupId: {
-      type: [String, Number],
-      required: false,
-      validator: value => !isNaN(Number(value)) || typeof value === 'string'
-    }
-  },
-   data() {
-     return {
-        MemberName: '',
-        currentGroup: null,
-        currentUserRole: null,
-        showInviteDialog: false,
-       expenseType: '',
-       customExpenseType: '',
-       itemName: '',
-       itemPrice: '',
-       editId: null,
-       action: 'add',
-       hideMessage: false,
-       successTimeout: null,
-       budgetAmount: '',
-       budgetEditId: null, 
-       isAddingBudget: false,
-       isEditingBudget: false,
-       messageContext: '',
-       budgetSuccessMessage: '',
-       budgetHideMessage: false,
-       budgetSuccessTimeout: null,
-       expenseSuccessMessage: '',
-       expenseHideMessage: false,
-       expenseSuccessTimeout: null,
-       filterMonth: null,
-       error: null,
-       currentMonthYear: this.getCurrentMonthYear(),
-       showBudgetExceededAlert: false,
-       alertDismissed: false,
-       lastCheckedMonthYear: null,
-       isPredicting: false,
-       showPredictionFeedback: false,
-       predictionDebounce: null
-     };
-   },
-   
-   computed: {
-    ...mapState(['addExpenses', 'personalBudgets', 'usdExchangeRate']),
-  ...mapGetters(['getTotalAmount', 'getCurrentBudget', 'getAvailableMonths', 'getAddExpenseMonthYear']),
+</template>
 
-  isGroupExpense() {
-    return !!this.groupId;
-  },
-  
-  shouldShowExpenses() {
-    const now = new Date();
-    const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    return this.selectedMonthYear === currentMonthYear;
-  },
+<script>
+import Navigation from "./navigation.vue";
+import { mapState, mapActions, mapGetters } from 'vuex';
 
-  filteredExpenses() {
-    if (this.isGroupExpense) {
-      return this.currentGroup?.expenses || [];
-    }
-    return this.shouldShowExpenses ? this.addExpenses : [];
-  },
-
-  selectedMonthYear: {
-  get() {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  },
-  set(value) {
-    // Prevent month change in Add Expense page
-    console.log("Month selection is locked in Add Expense page");
-  }
-},
-
-currentBudget() {
-    if (this.isGroupExpense) {
-      return { 
-        budget_amount: this.currentGroup?.budget || 0,
-        month_year: this.getCurrentMonthYear()
-      };
-    }
-    const currentMonthYear = this.getCurrentMonthYear();
-    return this.$store.getters.getCurrentBudget(currentMonthYear);
-  },
-
-     safeSelectedMonthYear() {
-      return this.selectedMonthYear || this.currentMonthYear;
-    },
- 
-     totalAmount() {
-      try {
-    return this.getTotalAmount || 0;
-  } catch (error) {
-    console.error('Error calculating total amount:', error);
-    return 0;
-  }
-},
- 
-     totalInUsd() {
-       return (this.totalAmount / this.usdExchangeRate).toFixed(2);
-     },
- 
-     currentBudgetAmount() {
-    return this.currentBudget.budget_amount;
-  },
-     
-  hasExistingBudget() {
-    return !!this.currentBudget.id;
-  },
-
-  isBudgetExceeded() {
-    if (!this.currentBudget?.budget_amount) return false;
-    return this.totalAmount > this.currentBudget.budget_amount;
-  }
-},
-
-   async mounted() {
-  try {
-    this.isLoading = true;
-    this.alertDismissed = localStorage.getItem('budgetAlertDismissed') === 'true';
-    
-    const now = new Date();
-    const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await this.setSelectedMonthYear(currentMonthYear);
-
-    this.checkMonthChange();
-
-    await Promise.all([
-      this.fetchExchangeRate(),
-      this.fetchPersonalBudgets(),
-      this.fetchAddExpenses() 
-    ]);
-    
-    // Add this line to check initial budget status
-    this.checkBudgetStatus();
-    this.monthCheckInterval = setInterval(this.checkMonthChange, 86400000); // 24 hours
-    } catch (error) {
-      console.error("Initialization error:", error);
-      this.error = error.message || 'Failed to load data';
-    } finally {
-      this.isLoading = false;
-    }
-  },
-
-  beforeUnmount() {
-    clearInterval(this.monthCheckInterval);
-  },
-
-
-  watch: {
-  selectedMonthYear: {
-    immediate: true,
-    async handler(newVal, oldVal) {
-      if (newVal !== oldVal) {
-        try {
-          await Promise.all([
-            this.fetchAddExpenses(), 
-            this.fetchPersonalBudgets()
-          ]);
-          this.checkBudgetStatus();
-        } catch (error) {
-          console.error('Error fetching data after month change:', error);
-        }
-      }
-    }
-  },
-  
-  totalAmount: {
-    immediate: true,
-    handler(newVal) {
-      this.checkBudgetStatus();
-    }
-  },
-  
-  currentBudget: {
-    deep: true,
-    immediate: true,
-    handler() {
-      this.checkBudgetStatus();
-    }
-  }
-},
-
-async created() {
-  if (this.groupId) {
-    await this.initializeGroup();
-  }
-  await this.initializePersonal(); // Your existing initialization
-},
-
-   methods: {
-     ...mapActions([
-       'fetchExchangeRate',
-       'fetchExpenses',
-       'fetchPersonalBudgets',
-       'addExpense',
-       'updateExpense',
-       'deleteExpense',
-       'addBudget',
-       'updateBudget',
-       'setSelectedMonthYear' ,
-       'fetchAddExpenses' 
-     ]),
-     async initializeGroup() {
-    try {
-      const token = localStorage.getItem('jsontoken');
-      if (!token || !this.groupId) return;
-
-      const response = await this.$axios.get(`/api/grp_expenses/${this.groupId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (response.data.success) {
-        this.currentGroup = response.data.data;
-        await this.fetchGroupData();
-      }
-    } catch (err) {
-      this.handleGroupError(err);
-    }
-  },
-  
-  async initializePersonal() {
-    try {
-      this.isLoading = true;
-      this.alertDismissed = localStorage.getItem('budgetAlertDismissed') === 'true';
-      
-      const now = new Date();
-      const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      await this.setSelectedMonthYear(currentMonthYear);
-
-      this.checkMonthChange();
-
-      await Promise.all([
-        this.fetchExchangeRate(),
-        this.fetchPersonalBudgets(),
-        this.fetchAddExpenses() 
-      ]);
-      
-      this.checkBudgetStatus();
-      this.monthCheckInterval = setInterval(this.checkMonthChange, 86400000);
-    } catch (error) {
-      console.error("Initialization error:", error);
-      this.error = error.message || 'Failed to load data';
-    } finally {
-      this.isLoading = false;
-    }
-  },
-
-  handleGroupError(err) {
-    if (err.response?.status === 401) {
-      this.$notify.error({
-        title: 'Session Expired',
-        message: 'Please login again'
-      });
-      localStorage.removeItem('jsontoken');
-      this.$router.push('/login');
-    } else if (err.response?.status === 403) {
-      this.$notify.error({
-        title: 'Access Denied',
-        message: 'You dont have permission to view this group'
-      });
-      this.$router.push('/GC');
-    } else if (err.response?.status === 404) {
-      this.$notify.error({
-        title: 'Not Found',
-        message: 'Group does not exist'
-      });
-      this.$router.push('/GC');
+export default {
+  name: 'Group',
+  components: { Navigation },
+  beforeRouteEnter(to, from, next) {
+    if (!to.params.groupId) {
+      next('/GC');
     } else {
-      this.$notify.error({
-        title: 'Error',
-        message: err.message || 'Failed to load group data'
-      });
+      next();
     }
   },
-  
-  async fetchGroupData() {
-    try {
-      const response = await this.$axios.get('/api/grp_expenses/current');
-      this.currentGroup = response.data.group;
-      this.currentUserRole = response.data.role;
-    } catch (err) {
-      console.error("Failed to fetch group data:", err);
-    }
+  data() {
+    return {
+      groupId: this.$route.params.groupId,
+      activeTab: 'expenses',
+      currentMonthYear: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
+      
+      // Modals
+      showAddExpenseModal: false,
+      showEditExpenseModal: false,
+      showConfirmationModal: false,
+      
+      // Form data
+      newExpense: {
+        item_name: '',
+        item_price: 0,
+        expense_type: 'Food',
+        group_id: this.$route.params.groupId
+      },
+      
+      editingExpense: {},
+      confirmationTitle: '',
+      confirmationMessage: '',
+      confirmAction: () => {},
+      
+      // Invite member
+      inviteEmail: '',
+      inviteError: '',
+      inviteSuccess: '',
+      summaryLoading: false,
+      summaryError: null
+    };
   },
-  
-  async deleteGroup() {
-    if (confirm("Are you sure you want to delete this group?")) {
-      try {
-        await this.$axios.delete(`/api/grp_expenses/${this.currentGroup.id}`);
-        this.$router.push('/GC');
-      } catch (err) {
-        console.error("Failed to delete group:", err);
-      }
+  computed: {
+    ...mapState('group', { // Use object syntax for clarity
+      currentGroup: state => state.currentGroup,
+      members: state => state.members,
+      expenses: state => state.expenses,
+      summary: state => state.summary,
+      loading: state => state.loading,
+      error: state => state.error,
+      isAdmin: state => state.isAdmin
+    }),
+    ...mapGetters('group', ['creatorName']),
+
+    group() {
+      return this.currentGroup || {};
     }
   },
 
-    checkMonthChange() {
-    const lastAccessedMonth = localStorage.getItem('lastAccessedMonth');
-    const currentMonth = new Date().getMonth();
-    
-    if (lastAccessedMonth && parseInt(lastAccessedMonth) !== currentMonth) {
-        console.log('New month detected - resetting view');
-        localStorage.removeItem('budgetAlertDismissed');
-        this.alertDismissed = false;
+  async created() {
+    const user = JSON.parse(localStorage.getItem('user'));
+    const token = localStorage.getItem('jsontoken');
 
-        const newMonthYear = this.getCurrentMonthYear();
-        this.setSelectedMonthYear(newMonthYear);
-        
-        Promise.all([
-      this.fetchAddExpenses(), 
-      this.fetchPersonalBudgets()
-    ]).then(() => {
-      this.checkBudgetStatus();
+    if (!user || !token) {
+    console.error('Missing authentication data');
+    this.$router.push('/login');
+    return;
+  }
+
+  if (!this.$route.params.groupId) {
+    console.error('Missing groupId parameter');
+    this.$router.push('/GC');
+    return;
+  }
+
+  // Proceed with data loading
+  try {
+    await this.fetchGroupData();
+    await this.loadExpenses();
+    await this.loadSummary();
+  } catch (err) {
+    console.error('Failed to load group data:', err);
+    this.$notify({
+      title: 'Error',
+      message: 'Failed to load group data',
+      type: 'error'
     });
   }
-      
-      localStorage.setItem('lastAccessedMonth', currentMonth);
-    },
+},
 
-     onItemNameChange() {
-      clearTimeout(this.predictionDebounce);
-      
-      // Only predict if item name has at least 3 characters and no category is selected
-      if (this.itemName.length < 3 || this.expenseType) return;
-      
-      this.predictionDebounce = setTimeout(() => {
-        this.predictCategory();
-      }, 500); // Debounce to avoid too many requests
-    },
+  methods: {
+    ...mapActions('group', [
+      'fetchGroup',
+      'fetchExpenses',
+      'fetchSummary',
+      'addExpense',
+      'updateExpense',
+      'deleteExpense',
+      'sendInvite',
+      'removeMember',
+      'updateGroupName',
+      'deleteGroup'
+    ]),
     
-    async predictCategory() {
-      if (this.isPredicting || !this.itemName || this.itemName.length < 3) return;
-      
-      try {
-        this.isPredicting = true;
-        
-        const response = await this.$axios.post('/api/predictions/predict', {
-          item_name: this.itemName
-        }, {
-          headers: { 
-            Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
-          }
-        });
-        
-        if (response.data.success) {
-      const predictedCategory = response.data.data.expense_type;
-      this.expenseType = predictedCategory;
-      
-      this.showPredictionFeedback = predictedCategory === 'Other' && 
-        this.shouldSuggestAlternative(this.itemName);
+    async fetchGroupData() {
+ const user = JSON.parse(localStorage.getItem('user'));
+  if (!user) {
+    console.error('No user found in localStorage. Redirecting to login...');
+    this.$router.push('/login'); // Redirect to login if no user
+    return;
+  }
+
+  try {
+    console.log('Fetching group data for groupId:', this.groupId);
+    await this.fetchGroup(this.groupId);
+    console.log('Group data fetched successfully');
+  } catch (err) {
+    console.error('Error fetching group data:', {
+      error: err,
+      response: err.response?.data
+    });
+    
+    this.$notify({
+      title: 'Error',
+      message: err.message || 'Failed to load group data',
+      type: 'error'
+    });
+
+    if (err.response?.status === 401 || err.message.includes('not logged in')) {
+      this.$router.push('/login');
+    } else if (err.message.includes('Group data is missing')) {
+      // Handle case where group doesn't exist or user doesn't have access
+      this.$router.push('/GC');
     }
-  } catch (error) {
-    console.error('Prediction failed:', error);
-  } finally {
-    this.isPredicting = false;
   }
 },
+    
+    async loadExpenses() {
+    const monthYear = this.formatMonthYear(this.currentMonthYear);
+    await this.fetchExpenses({ groupId: this.groupId, monthYear });
+  },
+    
+  async loadSummary() {
+    this.summaryLoading = true;
+    this.summaryError = null;
 
-shouldSuggestAlternative(itemName) {
-  const lowerItem = itemName.toLowerCase();
-  const words = lowerItem.split(/\s+/);
-  
-  const categoryKeywords = {
-        Food: [
-          "burger", "burgei", "burgir", "hamburger", "jollibee", 
-          "pizza", "piza", "pasta", "sandwich", "fries", "milktea",
-          "rice", "noodles", "chicken", "mcdo", "kfc"
-        ],
-        Bill: [
-          "electric bill", "water bill", "internet bill", "phone bill",
-          "cable bill", "utility bill", "rent", "mortgage", "electricity",
-          "water payment", "internet payment"
-        ],
-        Transportation: [
-          "gasoline", "gas", "petrol", "diesel", "jeepney fare",
-          "bus", "mrt", "grab", "angkas", "taxi",
-          "lrt fare", "tricycle fare", "parking fee", "car maintenance"
-        ],
-        Entertainment: [
-          "movie tickets", "netflix", "spotify", "youtube premium",
-          "concert tickets", "videoke", "arcade", "theme park",
-          "movie", "cinema", "streaming", "game", "video game"
-        ],
-        Healthcare: [
-          "doctor visit", "hospital", "medicine", "vitamins",
-          "checkup", "dentist", "vaccine", "medical supplies",
-          "pharmacy", "drugstore", "clinic", "xray", "laboratory"
-        ],
-        Shopping: [
-          'shoes', 'clothes', 'shirt', 'pants', 'dress',
-          'gadget', 'phone', 'laptop', 'accessories', 'bag',
-          'watch', 'perfume', 'makeup', 'groceries', 'market',
-          'office chair', 'desk', 'monitor', 'keyboard', 'mouse',
-          'furniture', 'stationery', 'notebook', 'pen', 'backpack'
-        ]
-      };
-  const isUnknown = !Object.values(categoryKeywords).some(keywords => 
-    keywords.some(keyword =>
-      keyword.includes(' ') ? 
-        lowerItem.includes(keyword) : 
-        words.includes(keyword)
-    )
-  );
+    try {
+      const monthYear = this.formatMonthYear(this.currentMonthYear);
+    if (!monthYear || !/^\d{4}-\d{2}$/.test(monthYear)) {
+      throw new Error('Invalid month format');
+    }
+    
+    await this.fetchSummary({ 
+      groupId: this.groupId, 
+      monthYear 
+    });
+  } catch (err) {
+    this.summaryError = err.message || 'Failed to load summary';
+    console.error('Failed to load summary:', err);
 
-  return isUnknown;
+      this.$notify({
+      title: 'Error',
+      message: this.summaryError,
+      type: 'error',
+      duration: 5000
+    });
+  } finally {
+    this.summaryLoading = false;
+  }
 },
-    async submitPredictionFeedback(isCorrect) {
+    
+    formatDate(dateString) {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+    },
+    
+    formatMonthYear(monthYearString) {
+      const date = new Date(monthYearString);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      return `${year}-${month}`;
+    },
+    
+    prevMonth() {
+      const date = new Date(this.currentMonthYear);
+      date.setMonth(date.getMonth() - 1);
+      this.currentMonthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+      this.loadExpenses();  
+      this.loadSummary(); 
+    },
+    
+    nextMonth() {
+      const date = new Date(this.currentMonthYear);
+      date.setMonth(date.getMonth() + 1);
+      this.currentMonthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+      this.loadExpenses(); 
+      this.loadExpenses(); 
+    },
+    
+    copyGroupCode() {
+      navigator.clipboard.writeText(this.currentGroup.group_code);
+      this.$notify({
+        title: 'Copied!',
+        message: 'Group code copied to clipboard',
+        type: 'success'
+      });
+    },
+    
+    async submitExpense() {
       try {
-        if (!isCorrect) {
-          // Send correction to backend to learn
-          await this.$axios.post('/api/predictions/learn', {
-            item_name: this.itemName,
-            expense_type: this.expenseType 
-          }, {
-            headers: { 
-              Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
-            }
+        await this.addExpense(this.newExpense);
+        this.$notify({
+          title: 'Success',
+          message: 'Expense added successfully',
+          type: 'success'
+        });
+        this.closeModal();
+        this.resetNewExpense();
+      } catch (err) {
+        console.error('Error adding expense:', err);
+        this.$notify({
+          title: 'Error',
+          message: err.response?.data?.message || 'Failed to add expense',
+          type: 'error'
+        });
+      }
+    },
+    
+    editExpense(expense) {
+      this.editingExpense = { ...expense };
+      this.showEditExpenseModal = true;
+    },
+    
+    async updateExpense() {
+      try {
+        await this.updateExpense(this.editingExpense);
+        this.$notify({
+          title: 'Success',
+          message: 'Expense updated successfully',
+          type: 'success'
+        });
+        this.closeModal();
+      } catch (err) {
+        console.error('Error updating expense:', err);
+        this.$notify({
+          title: 'Error',
+          message: err.response?.data?.message || 'Failed to update expense',
+          type: 'error'
+        });
+      }
+    },
+    
+    confirmDeleteExpense(expense) {
+      this.confirmationTitle = 'Delete Expense';
+      this.confirmationMessage = `Are you sure you want to delete "${expense.item_name}" (₱${expense.item_price.toFixed(2)})?`;
+      this.confirmAction = async () => {
+        try {
+          await this.deleteExpense(expense.id);
+          this.$notify({
+            title: 'Success',
+            message: 'Expense deleted successfully',
+            type: 'success'
+          });
+          this.closeModal();
+        } catch (err) {
+          console.error('Error deleting expense:', err);
+          this.$notify({
+            title: 'Error',
+            message: err.response?.data?.message || 'Failed to delete expense',
+            type: 'error'
           });
         }
-        
-        this.showPredictionFeedback = false;
-      } catch (error) {
-        console.error('Feedback submission failed:', error);
-      }
-    },
-
-     checkBudgetStatus() {
-  console.log('--- Checking Budget Status ---');
-  console.log('Current Budget:', this.currentBudget);
-  console.log('Budget Amount:', this.currentBudget?.budget_amount);
-  console.log('Total Expenses:', this.totalAmount);
-
-  if (!this.currentBudget?.budget_amount) {
-    this.showBudgetExceededAlert = false;
-    return;
-  }
-  
-  const currentMonthYear = this.getCurrentMonthYear();
-  if (this.lastCheckedMonthYear !== currentMonthYear) {
-    this.alertDismissed = false;
-    localStorage.removeItem('budgetAlertDismissed');
-    this.lastCheckedMonthYear = currentMonthYear;
-  }
-
-  const isExceeded = this.totalAmount > Number(this.currentBudget.budget_amount);
-  
-  if (isExceeded && !this.alertDismissed) {
-    console.log('Showing budget exceeded alert');
-    this.showBudgetExceededAlert = true;
-  } else {
-    console.log('Hiding budget exceeded alert');
-    this.showBudgetExceededAlert = false;
-  }
-},
-  
-  dismissAlert() {
-    this.showBudgetExceededAlert = false;
-    this.alertDismissed = true;
-    // Optional: Store dismissal in localStorage to persist across page refreshes
-    localStorage.setItem('budgetAlertDismissed', 'true');
-  },
-     getCurrentMonthYear() {
-      const now = new Date();
-      const month = now.getMonth() + 1; // JavaScript months are 0-indexed
-      const year = now.getFullYear();
-      return `${year}-${month.toString().padStart(2, '0')}`;
-    },
- 
-     handleMonthYearChange(newMonthYear) {
-       this.setSelectedMonthYear(newMonthYear);  
-       this.fetchExpenses();
-     },
- 
-     formatMonthYear(monthYear) {
-       try {
-         if (!monthYear) {
-           const now = new Date();
-           return now.toLocaleString('default', { month: 'long', year: 'numeric' });
-         }
-         
-         if (typeof monthYear === 'string') {
-           const [year, month] = monthYear.split('-').map(Number);
-           if (!isNaN(year) && !isNaN(month)) {
-             const date = new Date(year, month - 1);
-             return date.toLocaleString('default', { 
-               month: 'long', 
-               year: 'numeric' 
-             });
-           }
-         }
-         
-         // Fallback for invalid input
-         const now = new Date();
-         return now.toLocaleString('default', { month: 'long', year: 'numeric' });
-       } catch (e) {
-         console.error('Error formatting month/year:', e);
-         return 'Invalid date';
-       }
-     },
- 
-     // Budget Form Methods - REPLACED submitBudget with these two methods
-     showAddBudgetForm() {
-       this.isAddingBudget = true;
-       this.budgetAmount = '';
-     },
-     
-     showEditBudgetForm() {
-       this.isEditingBudget = true;
-       this.budgetAmount = this.currentBudgetAmount;
-     },
-     
-     cancelBudgetForm() {
-       this.isAddingBudget = false;
-       this.isEditingBudget = false;
-     },
- 
-     // NEW BUDGET METHODS - ADD THESE
-     async submitAddBudget() {
-    try {
-      if (!this.budgetAmount) {
-        throw new Error('Please enter a budget amount');
-      }
-
-      const budgetData = {
-        month_year: this.currentMonthYear,
-        budget_amount: this.parseCurrency(this.budgetAmount)
       };
-      
-      const result = await this.addBudget(budgetData); // Now calls the Vuex action
-      
-      if (result.success) {
-        this.showBudgetSuccessMessage(result.message || 'Budget added successfully!');
-        await this.fetchPersonalBudgets();
-        this.cancelBudgetForm();
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (error) {
-      console.error('Budget add error:', error);
-      this.showBudgetSuccessMessage(error.message || 'Failed to add budget');
-    }
-  },
- 
-     async updateBudget() {
-       try {
-        if (!this.currentBudget.id) {
-      throw new Error('No budget found for current month');
-    }
- 
-         if (!this.budgetAmount) {
-           throw new Error('Please enter a budget amount');
-         }
- 
-         const budgetData = {
-           id: this.currentBudget.id,
-           month_year: this.selectedMonthYear,
-           budget_amount: this.parseCurrency(this.budgetAmount)
-         };
-         
-         const result = await this.$store.dispatch('updateBudget', budgetData);
-         
-         if (result.success) {
-           this.showBudgetSuccessMessage(result.message || 'Budget updated successfully!');
-           await this.fetchPersonalBudgets();
-           this.cancelBudgetForm();
-         } else {
-           throw new Error(result.message);
-         }
-       } catch (error) {
-         this.showBudgetSuccessMessage(error.message || 'Failed to update budget');
-       }
-     },
- 
-     parseCurrency(value) {
-       if (!value) return 0;
-       const numericValue = String(value).replace(/[^\d.]/g, '');
-       return parseFloat(numericValue) || 0;
-     },
-     
-     convertPhpToUsd(phpAmount) {
-       return this.parseCurrency(phpAmount) / this.usdExchangeRate;
-     },
-     
-     formatUsd(value) {
-       return '$' + parseFloat(value).toFixed(2);
-     },
-     
-     formatPHP(value) {
-       try {
-         const amount = Number(this.parseCurrency(value)) || 0;
-         return '₱' + amount.toLocaleString('en-PH', {
-           minimumFractionDigits: 2,
-           maximumFractionDigits: 2
-         });
-       } catch (e) {
-         console.error('Error formatting PHP:', e);
-         return '₱0.00';
-       }
-     },
-     
-     formatDate(dateString) {
-       if (!dateString || dateString === 'N/A') return 'N/A';
-       
-       try {
-         const options = { 
-           day: 'numeric',   
-           month: 'short',   
-           year: 'numeric'    
-         };
-         return new Date(dateString).toLocaleDateString('en-US', options);
-       } catch (e) {
-         console.error('Date formatting error:', e);
-         return 'N/A';
-       }
-     },
- 
-     // Expense Methods
-     async handleSubmit() {
-  try {
-    if (!this.validateExpenseForm()) return;
-
-    const expenseData = {
-      item_price: Number(this.itemPrice),
-      expense_type: this.expenseType === 'Other' ? this.customExpenseType : this.expenseType,
-      item_name: this.itemName,
-      expense_date: new Date().toISOString()
-    };
-
-    if (this.isGroupExpense) {
-      expenseData.group_id = this.groupId;
-      expenseData.member_name = this.MemberName;
-      const response = await this.$axios.post('/api/grp_expenses', expenseData);
-      // Handle group expense response
-    } else {
-      // Your existing personal expense handling
-      expenseData.personal_budget_id = this.currentBudget.id;
-      const result = await this.addExpense(expenseData);
-      // Handle personal expense result
-    }
-
-    // Reset form and show success message
-    this.resetForm();
+      this.showConfirmationModal = true;
+    },
     
-  } catch (error) {
-    console.error('Error in handleSubmit:', error);
-    this.showExpenseSuccessMessage(error.message || 'Failed to save expense');
+    async sendInvite() {
+      this.inviteError = '';
+      this.inviteSuccess = '';
+      
+      if (!this.inviteEmail) {
+        this.inviteError = 'Please enter an email address';
+        return;
+      }
+      
+      try {
+        await this.sendInvite({ groupId: this.groupId, email: this.inviteEmail });
+        this.inviteSuccess = 'Invitation sent successfully!';
+        this.inviteEmail = '';
+        setTimeout(() => this.inviteSuccess = '', 3000);
+      } catch (err) {
+        console.error('Error sending invite:', err);
+        this.inviteError = err.response?.data?.message || 'Failed to send invitation';
+      }
+    },
+    
+    confirmRemoveMember(member) {
+      this.confirmationTitle = 'Remove Member';
+      this.confirmationMessage = `Are you sure you want to remove ${member.username} from the group?`;
+      this.confirmAction = async () => {
+        try {
+          await this.removeMember({ groupId: this.groupId, memberId: member.id });
+          this.$notify({
+            title: 'Success',
+            message: 'Member removed successfully',
+            type: 'success'
+          });
+          this.closeModal();
+        } catch (err) {
+          console.error('Error removing member:', err);
+          this.$notify({
+            title: 'Error',
+            message: err.response?.data?.message || 'Failed to remove member',
+            type: 'error'
+          });
+        }
+      };
+      this.showConfirmationModal = true;
+    },
+    
+    async updateGroupName() {
+      try {
+        await this.updateGroupName({ 
+          groupId: this.groupId, 
+          name: this.currentGroup.group_name 
+        });
+        this.$notify({
+          title: 'Success',
+          message: 'Group name updated successfully',
+          type: 'success'
+        });
+      } catch (err) {
+        console.error('Error updating group name:', err);
+        this.$notify({
+          title: 'Error',
+          message: err.response?.data?.message || 'Failed to update group name',
+          type: 'error'
+        });
+      }
+    },
+    
+    confirmDeleteGroup() {
+      this.confirmationTitle = 'Delete Group';
+      this.confirmationMessage = 'Are you sure you want to delete this group permanently? This action cannot be undone.';
+      this.confirmAction = async () => {
+        try {
+          await this.deleteGroup(this.groupId);
+          this.$notify({
+            title: 'Success',
+            message: 'Group deleted successfully',
+            type: 'success'
+          });
+          this.$router.push('/GC');
+        } catch (err) {
+          console.error('Error deleting group:', err);
+          this.$notify({
+            title: 'Error',
+            message: err.response?.data?.message || 'Failed to delete group',
+            type: 'error'
+          });
+        }
+      };
+      this.showConfirmationModal = true;
+    },
+    
+    canEditExpense(expense) {
+      const userId = JSON.parse(localStorage.getItem('user')).id;
+      return this.isAdmin || expense.user_id === userId;
+    },
+    
+    getPercentage(value, total) {
+      if (total === 0) return 0;
+      return Math.round((value / total) * 100);
+    },
+    
+    closeModal() {
+      this.showAddExpenseModal = false;
+      this.showEditExpenseModal = false;
+      this.showConfirmationModal = false;
+    },
+    
+    resetNewExpense() {
+      this.newExpense = {
+        item_name: '',
+        item_price: 0,
+        expense_type: 'Food',
+        group_id: this.groupId
+      };
+    }
   }
-},
-validateExpenseForm() {
-  // Check if required fields are filled
-  if (!this.itemPrice || isNaN(Number(this.itemPrice))) {
-    this.showExpenseSuccessMessage('Please enter a valid amount');
-    return false;
-  }
+};
+</script>
 
-  if (!this.expenseType) {
-    this.showExpenseSuccessMessage('Please select an expense type');
-    return false;
-  }
-
-  if (!this.itemName?.trim()) {
-    this.showExpenseSuccessMessage('Please enter an item name');
-    return false;
-  }
-
-  if (!this.currentBudget?.id) {
-    this.showExpenseSuccessMessage('No valid budget selected');
-    return false;
-  }
-
-  return true;
-},
- 
-editExpense(expense) {
-  if (!expense?.id) {
-    console.error('Cannot edit - invalid expense:', expense);
-    this.showExpenseSuccessMessage('Cannot edit this expense');
-    return;
-  }
-  
-  this.editId = expense.id;
-  this.expenseType = expense.expense_type || '';
-  this.customExpenseType = this.expenseType === 'Other' ? expense.expense_type : '';
-  this.itemName = expense.item_name || '';
-  this.itemPrice = expense.item_price || '';
-  this.action = 'edit'; // Make sure this is set
-
-  console.log('Editing expense ID:', this.editId);
-},
- 
-     async deleteExpenseHandler(id) {
-       const result = await this.deleteExpense(id);
-       if (result.success) {
-         this.showExpenseSuccessMessage('Expense deleted successfully!');
-       } else {
-         this.showExpenseSuccessMessage(result.message || 'Failed to delete expense');
-       }
-     },
-
-     handleError(error) {
-    console.error('Component error:', error);
-    this.error = error.message || 'An unexpected error occurred';
-  },
-  resetError() {
-    this.error = null;
-    this.mounted(); // Retry initialization
-  },
-     
-     resetForm() {
-       this.expenseType = '';
-       this.customExpenseType = '';
-       this.itemName = '';
-       this.itemPrice = '';
-       this.editId = null;
-       this.action = 'add';
-     },
- 
-     showBudgetSuccessMessage(message) {
-       if (this.budgetSuccessTimeout) {
-         clearTimeout(this.budgetSuccessTimeout);
-       }
-       
-       this.budgetHideMessage = false;
-       this.budgetSuccessMessage = message;
-       
-       this.budgetSuccessTimeout = setTimeout(() => {
-         this.budgetHideMessage = true;
-         setTimeout(() => {
-           this.budgetSuccessMessage = '';
-         }, 500);
-       }, 2500);
-     },
-     
-     showExpenseSuccessMessage(message) {
-  // Clear any existing timeout
-  if (this.expenseSuccessTimeout) {
-    clearTimeout(this.expenseSuccessTimeout);
-    this.expenseSuccessTimeout = null;
-  }
-  
-  this.expenseHideMessage = false;
-  this.expenseSuccessMessage = message;
-  
-  this.expenseSuccessTimeout = setTimeout(() => {
-    this.expenseHideMessage = true;
-    this.expenseSuccessTimeout = setTimeout(() => {
-      this.expenseSuccessMessage = '';
-      this.expenseSuccessTimeout = null;
-    }, 500);
-  }, 2500);
-},
- 
-     getCurrentBudgetId() {
-       return this.getCurrentBudget ? this.getCurrentBudget.id : null;
-     }
-   }
-  };
- </script>
-
- 
 <style scoped>
-.predicting-text {
-  color: #555;
-  font-style: italic;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  display: block;
-  margin-top: 2px;
-  opacity: 0.85;
+.group-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
-.prediction-feedback {
-  margin-top: 10px;
-  padding: 5px;
-  background: linear-gradient(to right, #fafafa, #f0f0f0);
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  font-size: 0.95rem;
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
 }
 
-.feedback-btn {
-  margin-right: 8px;
-  padding: 4px 8px;
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top: 4px solid #3498db;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+.spinner.small {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-container {
+  text-align: center;
+  padding: 20px;
+  background-color: #ffebee;
+  border-radius: 5px;
+}
+
+.error-message {
+  color: #d32f2f;
+  margin-bottom: 15px;
+}
+
+.retry-button {
+  background-color: #1976d2;
+  color: white;
   border: none;
+  padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
-  font-weight: 500;
-  transition: background 0.3s ease, transform 0.2s ease;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
-.feedback-btn.correct {
-  background: #4CAF50;
-  color: white;
-}
-
-.feedback-btn.correct:hover {
-  background: #45a049;
-  transform: scale(1.05);
-}
-
-.feedback-btn.incorrect {
-  background: #f44336;
-  color: white;
-}
-
-.feedback-btn.incorrect:hover {
-  background: #e53935;
-  transform: scale(1.05);
-}
-
-
-.budget-alert {
-  position: fixed;
-  top: 290px;
-  left: 50%;
-  transform: translateX(-50%);
-  background-color: #ffebee;
-  border: 1px solid #ef9a9a;
-  border-radius: 6px;
-  padding: 20px 30px; /* Increased padding */
-  min-width: 350px;    /* Optional: ensures a wider box */
-  color: #c62828;
-  font-weight: bold;
-  font-size: 1.2em;    /* Increased font size */
-  z-index: 1000;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
-  display: flex;
-  align-items: center;
-  animation: slideDown 0.3s ease-out;
-}
-
-.alert-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.alert-icon {
-  font-size: 1.5em; /* Increased icon size */
-}
-
-.dismiss-btn {
-  background: none;
-  border: none;
-  color: #c62828;
-  font-size: 1.8em; /* Bigger button */
-  cursor: pointer;
-  margin-left: 20px;
-  padding: 0 8px;
-}
-
-.dismiss-btn:hover {
-  color: #b71c1c;
-}
-
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -20px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-} /*NEWWWWWWWWWWWW */
-.main-layout {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  gap: 20px;
+.group-header {
+  background-color: #f5f5f5;
   padding: 20px;
-  box-sizing: border-box;
-}
-
-.top-row {
-  margin-top: 100px;
-  display: flex;
-  gap: 20px;
-  width: 100%;
-} 
-
-/* Budget Container Styles */
-.budget-container {
-  width: 30%;
-  background-color: #4a7c59; 
-  padding: 25px;
-  border-radius: 15px;
-  border: 2px solid #2e4e38;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-  height: auto;
-  color: white;
-}
-
-.budget-header {
-  flex-wrap: wrap;
-  display: flex;
-  align-items: center;
-  margin-bottom: 25px;
-}
-
-.budget-header h3 {
-  color: white;
-  font-size: 1.5rem;
-  margin-right: 16px;
-}
-
-.budget-content {
-  width: 100%;
-}
-
-.add-budget-btn, .edit-budget-btn {
-  background: #2a4935;
-  color: white;
-  border: none;
-  padding: 10px 15px;
   border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.3s;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  max-width: 72px;
-  font-size: 14px;
-  margin-left: 5px;
-}
-
-
-.add-budget-btn:hover, .edit-budget-btn:hover {
-  background: #dcdcdc;
-  color: #333333;
-  transform: translateY(-2px);
-}
-
-.budget-display {
-  flex-wrap: wrap;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 20px;
-  border-radius: 10px;
   margin-bottom: 20px;
+  margin-top: 100px;
 }
 
-.budget-info {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.budget-month-row, .budget-amount-row {
-  flex-wrap: wrap;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.budget-label {
-  font-weight: 500;
-  font-size: 1rem;
-}
-.budget-month, .budget-amount {
-  font-weight: 600;
-  font-size: 1.1rem;
-}
-
-.budget-amount {
-  color: #ffea00; 
-}
-
-.budget-form {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 20px;
-  border-radius: 10px;
-}
-
-.budget-form .form-group {
-  display: flex;
-  align-items: center;
-}
-
-.budget-form label {
-  min-width: 100px;
-}
-
-.budget-form input, .budget-form select {
-  width: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
-  background: white;
+.group-header h1 {
+  margin: 0;
   color: #333;
 }
 
-.budget-form-buttons {
+.group-code {
+  margin: 10px 0;
   display: flex;
-  flex-wrap: wrap; /* allows buttons to wrap on small screens */
-  gap: 12px;        /* space between buttons */
-  justify-content: center; /* or 'center' if you prefer */
-  box-sizing: border-box;
-  margin-top: 20px;
-  width: 100%;
+  align-items: center;
+  gap: 10px;
 }
 
-.budget-btn {
-  padding: 12px 0;
-  background-color: #2a4935;
-  color: white;
+.copy-button {
+  background: none;
   border: none;
-  border-radius: 8px;
+  cursor: pointer;
+  color: #1976d2;
+}
+
+.group-meta {
+  display: flex;
+  gap: 15px;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.group-tabs {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 20px;
+}
+
+.group-tabs button {
+  padding: 10px 20px;
+  background: none;
+  border: none;
   cursor: pointer;
   font-size: 1rem;
-  transition: all 0.3s;
-  flex: 1;
+  position: relative;
 }
 
-.budget-btn:hover {
-  background: #dcdcdc; 
-  color: #333333;
-  transform: translateY(-2px);
-}
-
-.cancel-btn {
-  background-color: #6c757d;
-}
-
-.cancel-btn:hover {
-  background-color: #4b5256;
-  color: white;
-}
-
-.budget-success-message {
-  background-color: #d4edda;
-  color: #155724;
-  padding: 10px;
-  border-radius: 4px;
-  margin: 10px 0;
-  text-align: center;
-  transition: opacity 0.5s ease;
-}
-
-.expense-success-message {
-  background-color: #d4edda;
-  color: #155724;
-  padding: 10px;
-  border-radius: 4px;
-  margin: 10px 0;
-  text-align: center;
-  transition: opacity 0.5s ease;
-} /* for expenses*/
-
-.budget-success-message.hide,
-.expense-success-message.hide {
-  opacity: 0;
-}
-
-
-.uneditable-month {
-  display: inline-block;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+.group-tabs button.active {
+  color: #1976d2;
   font-weight: bold;
-  min-width: 100px;
-}
- 
- .content-wrapper {
-  align-content: center;
-  width: 70%;
-  background-color: #85cf9d;
-  border: 2px solid #365c42;
-  padding: 20px;
-  border-radius: 15px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-  height: auto;
 }
 
-.expenses-container {
-  max-width: 100%; 
-  margin: 0 auto;
-  box-sizing: border-box;
+.group-tabs button.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
   width: 100%;
+  height: 2px;
+  background-color: #1976d2;
+}
+
+.expense-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.month-selector {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.month-selector button {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.add-expense-button {
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.expenses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.expense-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
   background-color: white;
-  padding: 20px;
-  border-radius: 15px;
-  border: 2px solid #85cf9d;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.expense-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.expense-name {
+  font-weight: bold;
+}
+
+.expense-user {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.expense-type {
+  font-size: 0.8rem;
+  background-color: #e3f2fd;
+  color: #1976d2;
+  padding: 2px 6px;
+  border-radius: 10px;
+  display: inline-block;
+}
+
+.expense-amount {
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.expense-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.action-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+}
+
+.action-button.edit:hover {
+  color: #1976d2;
+}
+
+.action-button.delete:hover {
+  color: #d32f2f;
+}
+
+.members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.member-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.member-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.member-name {
+  font-weight: bold;
+}
+
+.member-email {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.member-role {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.role-badge {
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+}
+
+.role-badge.admin {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.role-badge.member {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.remove-button {
+  background-color: #ffebee;
+  color: #d32f2f;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.invite-section {
   margin-top: 30px;
-  transition: box-shadow 0.3s ease;
-}
- 
-.expenses-container:hover {
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
 }
 
- .expense-form {
-  text-align: center;
-  width: 100%; 
-}  
- 
-
-.expenses-section {
-  margin-top: 10px; 
-}
-
-.expenses-section h3 {
-  margin-top: 10px;
-  margin-bottom: 25px; 
-  color: #2e2e2e;
-  font-size: 1.5rem; 
-  padding-bottom: 10px;
-  border-bottom: 2px solid #e1e1e1; 
-  font-weight: 600;
-} 
-
-.expenses-table {
-  overflow-x: auto;
-  margin: 30px 0; 
-}  
-
-table {
-  width: 100%;
-  border-collapse: separate; 
-  border-spacing: 0 10px; 
-  margin-bottom: 30px; 
-}  
-
-th, td {
-  padding: 6px 20px; 
-  text-align: center;
-  border-bottom: 2px solid #e0e0e0;
-  color: #444;
-  font-size: 0.95rem;
-} 
-
-th {
-  background-color: #ecfdf5;
-  font-weight: 700;
-  font-size: 1rem; 
-  padding: 12px 20px; 
-  color: rgb(46, 41, 41);
-} 
-
-tr {
-  background-color: #ecfdf5;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
-  margin-bottom: 15px; 
-  transition: all 0.2s ease;
-}
-
-tr:hover {
-  background-color: #f9f9f9;
-  transform: translateY(-2px); 
-  box-shadow: 0 6px 12px rgba(0,0,0,0.08); 
-  transition: all 0.2s ease; 
-} 
-
-td, th {
-  vertical-align: middle;
-  white-space: nowrap;
-}
-.actions {
+.invite-form {
   display: flex;
   gap: 10px;
-  justify-content: center;
-} 
+  margin-top: 10px;
+}
 
-.edit-btn, .delete-btn {
-  padding: 8px 15px;
-  font-size: 0.9rem;
-  border-radius: 6px;
-  cursor: pointer;
+.email-input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.invite-button {
+  background-color: #1976d2;
+  color: white;
   border: none;
-  color: #fff;
-  font-weight: 600;
-  position: relative;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+@media (max-width: 768px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.summary-card {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.total-expenses {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.member-summary, .category-summary {
+  margin-bottom: 15px;
+}
+
+.progress-bar {
+  height: 8px;
+  background-color: #eee;
+  border-radius: 4px;
+  margin-top: 5px;
   overflow: hidden;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
-.edit-btn {
-  background-color: #059669;
+.progress-fill {
+  height: 100%;
+  background-color: #1976d2;
+  border-radius: 4px;
 }
 
-.delete-btn {
-  background-color: #b33c3c;
+.settings-section {
+  margin-bottom: 30px;
 }
 
-.edit-btn:hover {
-  background-color: #10b981;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(52, 211, 153, 0.3);
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 15px;
 }
 
-.delete-btn:hover {
-  background-color: #ef4444; 
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
-  animation: pulse 0.4s ease-in-out;
+.setting-input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
 }
 
-@keyframes pulse {
-  0% {
-    transform: translateY(-2px) scale(1);
-  }
-  50% {
-    transform: translateY(-2px) scale(1.05);
-  }
-  100% {
-    transform: translateY(-2px) scale(1);
-  }
+.save-button {
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
-.edit-btn:active, .delete-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+.danger-zone {
+  padding: 20px;
+  background-color: #ffebee;
+  border-radius: 8px;
 }
 
-.total {
-     font-size: 20px;
-     font-weight: bold;
-     color: #333;
-     padding: 20px;
-     background-color: #d0ebdd;
-     box-sizing: border-box;
-     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-     text-align: center;
-     max-width: 1300px;
-     width: 100%;
-     position: relative; 
-     bottom: 0;   
-     border-radius: 12px;
-     margin-top: -20px;
+.danger-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 15px;
 }
 
- 
- .form-group {
-     margin-bottom: 20px;
-     margin-top: 20px;
- }
- 
- label {
-     margin-left: 10px;
-     text-align: left;
-     display: block;
-     margin-bottom: 5px;
-     font-size: 17px;
-     color: black;
- }
- 
- input[type="text"],
- input[type="number"],
- select {
-     width: 100%;
-     max-width: 800px;
-     padding: 10px;
-     font-size: 16px;
-     border-radius: 10px;
-     border: 3px solid #ddd;
-     border-color: #2a4935;
-     box-sizing: border-box;
-     min-height: 35px;
- }
- 
- .btn {
-     padding: 12px 50px;
-     background-color: #2a4935;
-     box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
-     color: white;
-     border: none;
-     border-radius: 12px;
-     cursor: pointer;
-     font-size: 15px;
-     transition: background-color 0.3s, color 0.3s; /* Smooth effect */
+.delete-button {
+  background-color: #d32f2f;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
-.btn:hover {
-    background-color: #dcdcdc; /* Change to any color you want */
-    color: #333333; /* Text color on hover */
-    transform: translateY(-2px);
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
 }
 
-.btn1 {
-    padding: 12px 50px;
-    background-color: white;
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
-    color: black;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-    font-size: 15px;
-    margin-top: 10px; /* Add vertical spacing instead */
-    margin-left: 430px;
-    transition: background-color 0.3s, color 0.3s;
+.modal-content {
+  background-color: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
-.btn1:hover {
-    background-color: rgb(26, 25, 25); /* Change to any color you want */
-    color: white; /* Text color on hover */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #ddd;
 }
 
-/* RESPONSIVE DESIGN */
-
-@media screen and (max-width: 1000px) {
-    .container {
-        margin: 20px 0px 0px 30px;
-        padding: 15px;
-        height: 500px;
-    }
-
-    .expense-form{
-      margin-top: 10px;
-      margin-bottom: 10px;
-    }
-
-    .add-budget-btn, .edit-budget-btn {
-      margin-bottom: 10px;
-    }
-
-    .content-wrapper {
-        padding: 0px;
-    }
-
-    input[type="text"],
-    input[type="number"],
-    select {
-        width: 90%;
-        max-width: 600px;
-        font-size: 15px;
-    }
-
-    .h3{
-      font-size: 20px;
-      font-weight: bold;
-      margin-top: 30px;
-      color: white;
-    }
-
-    .expenses-container{
-        width: 100%;
-        max-width: 1000px;
-    }
+.close-button {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #666;
 }
 
+.modal-body {
+  padding: 20px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.cancel-button {
+  background-color: #f5f5f5;
+  color: #333;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.submit-button {
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.confirmation-modal {
+  text-align: center;
+}
+
+.confirmation-actions {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.confirm-button {
+  background-color: #d32f2f;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.no-expenses {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.loading-expenses {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.success-message {
+  color: #2e7d32;
+  margin-top: 10px;
+}
 </style>
