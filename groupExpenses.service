@@ -1,0 +1,211 @@
+const pool = require('../../config/database'); 
+
+module.exports = {
+  // Add a new group expense
+  addGroupExpense: async (expenseData) => {
+    try {
+      // Verify group budget exists if provided
+      if (expenseData.group_budget_id) {
+        const budget = await db.query(
+          'SELECT id FROM group_budgets WHERE id = ? AND group_id = ?',
+          [expenseData.group_budget_id, expenseData.group_id]
+        );
+        if (budget.length === 0) {
+          throw new Error('The specified group budget does not exist');
+        }
+      }
+
+      const [result] = await db.query(
+        'INSERT INTO group_expenses (user_id, group_id, group_budget_id, expense_type, item_name, item_price, expense_date) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+        [
+          expenseData.userId,
+          expenseData.group_id,
+          expenseData.group_budget_id || null,
+          expenseData.expense_type,
+          expenseData.item_name,
+          expenseData.item_price
+        ]
+      );
+
+      return this.getGroupExpenseById(result.insertId);
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  // Edit a group expense
+  editGroupExpense: async (expenseData) => {
+    try {
+      await db.query(
+        'UPDATE group_expenses SET item_price = ?, expense_type = ?, item_name = ? WHERE id = ?',
+        [
+          expenseData.item_price,
+          expenseData.expense_type,
+          expenseData.item_name,
+          expenseData.id
+        ]
+      );
+      return this.getGroupExpenseById(expenseData.id);
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  // Delete a group expense
+  deleteGroupExpense: async (expenseId) => {
+    try {
+      await db.query('DELETE FROM group_expenses WHERE id = ?', [expenseId]);
+      return true;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  // Get expenses for a specific group and month
+  getGroupExpenses: async (groupId, monthYear) => {
+    try {
+      const [year, month] = monthYear.split('-');
+      const startDate = `${year}-${month}-01`;
+      const endDate = `${year}-${month}-31`;
+
+      const [expenses] = await db.query(
+        `SELECT ge.*, u.name as user_name 
+         FROM group_expenses ge
+         JOIN users u ON ge.user_id = u.id
+         WHERE ge.group_id = ? 
+         AND ge.expense_date BETWEEN ? AND LAST_DAY(?)
+         ORDER BY ge.expense_date DESC`,
+        [groupId, startDate, startDate]
+      );
+
+      return expenses;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  // Get expense by ID
+  getGroupExpenseById: async (expenseId) => {
+    try {
+      const [expense] = await db.query(
+        `SELECT ge.*, u.name as user_name 
+         FROM group_expenses ge
+         JOIN users u ON ge.user_id = u.id
+         WHERE ge.id = ?`,
+        [expenseId]
+      );
+      return expense[0] || null;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  // Check if user can edit an expense (creator or admin)
+  canUserEditExpense: async (userId, expenseId) => {
+    try {
+      // Check if user is the creator
+      const [expense] = await db.query(
+        'SELECT user_id, group_id FROM group_expenses WHERE id = ?',
+        [expenseId]
+      );
+      
+      if (expense.length === 0) return false;
+      if (expense[0].user_id === userId) return true;
+
+      // Check if user is admin of the group
+      const [membership] = await db.query(
+        'SELECT role FROM group_members WHERE user_id = ? AND group_id = ?',
+        [userId, expense[0].group_id]
+      );
+      
+      return membership.length > 0 && membership[0].role === 'admin';
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  // Check if user can delete an expense (same as edit permissions)
+  canUserDeleteExpense: async (userId, expenseId) => {
+    return this.canUserEditExpense(userId, expenseId);
+  },
+
+  // Get expense summary for a group
+  getGroupExpenseSummary: async (groupId, monthYear) => {
+    let connection;
+    try {
+      connection = await pool.getConnection();
+  
+      // Validate inputs
+      if (!groupId || isNaN(groupId)) {
+        throw new Error('Invalid group ID');
+      }
+  
+      if (!monthYear || !/^\d{4}-\d{2}$/.test(monthYear)) {
+        throw new Error('Invalid monthYear format (expected YYYY-MM)');
+      }
+  
+      const [year, month] = monthYear.split('-');
+      const startDate = `${year}-${month}-01`;
+  
+      // Get total expenses
+      const [totalResult] = await connection.query(
+        `SELECT COALESCE(SUM(item_price), 0) as total
+         FROM group_expenses
+         WHERE group_id = ?
+         AND expense_date BETWEEN ? AND LAST_DAY(?)`,
+        [groupId, startDate, startDate]
+      );
+  
+      // Get expenses by member
+      const [byMember] = await connection.query(
+        `SELECT u.id as user_id, u.username as name, 
+                COALESCE(SUM(ge.item_price), 0) as total
+         FROM group_members gm
+         JOIN users u ON gm.user_id = u.id
+         LEFT JOIN group_expenses ge ON ge.user_id = u.id
+           AND ge.group_id = ?
+           AND ge.expense_date BETWEEN ? AND LAST_DAY(?)
+         WHERE gm.group_id = ?
+         GROUP BY u.id, u.username`,
+        [groupId, startDate, startDate, groupId]
+      );
+  
+      // Get expenses by category
+      const [byCategory] = await connection.query(
+        `SELECT expense_type, COALESCE(SUM(item_price), 0) as total
+         FROM group_expenses
+         WHERE group_id = ?
+         AND expense_date BETWEEN ? AND LAST_DAY(?)
+         GROUP BY expense_type`,
+        [groupId, startDate, startDate]
+      );
+  
+      return {
+        total: Number(totalResult[0]?.total) || 0,
+        byMember: byMember || [],
+        byCategory: byCategory || []
+      };
+  
+    } catch (err) {
+      console.error('Error in getGroupExpenseSummary:', err);
+      throw err;
+    } finally {
+      if (connection) connection.release();
+    }
+  },
+
+  getGroupInfo: async (groupId) => {
+    try {
+      const [group] = await db.query(
+        `SELECT g.*, u.name as creator_name 
+         FROM groups g
+         JOIN users u ON g.created_by = u.id
+         WHERE g.id = ?`,
+        [groupId]
+      );
+      return group[0] || null;
+    } catch (err) {
+      throw err;
+    }
+  }
+};
