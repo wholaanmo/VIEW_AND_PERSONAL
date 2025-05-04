@@ -1,6 +1,10 @@
 <template>
   <div class="fixed-container">
     <navigation/>
+
+    <button @click="goBackToGroup" class="back-button">
+      <i class="fas fa-arrow-left"></i> Group Page
+    </button>
     <div class="group-management-container">
 
       <div v-if="userGroups.length > 0" class="user-groups-container">
@@ -117,12 +121,16 @@
         groupCode: '',
         groupCodeInput: '',
         error: '',
-        isLoading: false
+        isLoading: false,
+        forceShow: false
       };
     },
 
     async created() {
     await this.fetchUserGroups();
+    if (this.$route.query.fromGroup) {
+      this.forceShow = true;
+    }
   },
   
     methods: {
@@ -136,9 +144,10 @@
 
         if (response.data.success) {
           this.userGroups = response.data.data;
+
+          localStorage.setItem('userGroups', JSON.stringify(response.data.data));
           
-          // If user has exactly one group, redirect to it
-          if (this.userGroups.length === 1) {
+          if (!this.forceShow && this.userGroups.length === 1) {
             this.navigateToGroup(this.userGroups[0].id);
           }
         }
@@ -146,13 +155,48 @@
         console.error('Failed to fetch user groups:', err);
       }
     },
+          
+    goBackToGroup() {
+      const storedGroups = JSON.parse(localStorage.getItem('userGroups') || '[]');
 
-    navigateToGroup(groupId) {
-      this.$router.push({
-        name: 'Group',
-        params: { groupId }
-      });
-    },
+      if (storedGroups.length > 0) {
+      this.navigateToGroup(storedGroups[0].id);
+      return;
+    }
+
+      if (this.userGroups.length > 0) {
+        this.navigateToGroup(this.userGroups[0].id);
+      }
+
+     this.fetchUserGroups().then(() => {
+      if (this.userGroups.length > 0) {
+        this.navigateToGroup(this.userGroups[0].id);
+      } else {
+        // No groups exist - maybe show a message
+        this.error = "You don't have any groups yet";
+      }
+    });
+  },
+
+  navigateToGroup(groupId) {
+    console.log('Attempting to navigate to group:', groupId); // Debug log
+    if (!groupId) {
+      console.error('No group ID provided for navigation');
+      return;
+    }
+    
+    this.$router.push({
+      name: 'Group',
+      params: { groupId }
+    }).catch(err => {
+      // Handle navigation errors
+      console.error('Navigation error:', err);
+      if (err.name !== 'NavigationDuplicated') {
+        // Show error to user if it's not just a duplicate navigation
+        this.error = "Failed to navigate to group";
+      }
+    });
+  },
 
     formatDate(dateString) {
       // Your date formatting implementation
@@ -268,22 +312,45 @@
 }
 },
   
-    beforeRouteEnter(to, from, next) {
-      next(async vm => {
-        try {
-          const response = await vm.$axios.get('/api/grp_expenses/my-groups');
-          if (response.data?.success && response.data.data?.length > 0 && to.path === '/GC') {
-            vm.$router.push('/group');
-          }
-        } catch (err) {
-          console.error('Error fetching groups:', err);
+beforeRouteEnter(to, from, next) {
+  next(async vm => {
+    // Only auto-redirect if coming from login or home page
+    if (from.path === '/' || from.path === '/login') {
+      try {
+        const response = await vm.$axios.get('/api/grp_expenses/my-groups');
+        if (response.data?.success && response.data.data?.length > 0 && to.path === '/GC') {
+          vm.navigateToGroup(response.data.data[0].id);
         }
-      });
+      } catch (err) {
+        console.error('Error fetching groups:', err);
+      }
     }
-  };
+  });
+}
+};
   </script>
   
   <style scoped>
+  .back-button {
+  position: fixed;
+  top: 120px; /* Adjust based on your navbar height */
+  left: 20px;
+  z-index: 100;
+  background: #1976d2;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.back-button:hover {
+  background: #1565c0;
+}
   .user-groups-container {
   margin-bottom: 2rem;
 }
