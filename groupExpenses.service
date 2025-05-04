@@ -15,7 +15,7 @@ module.exports = {
         }
       }
 
-      const [result] = await db.query(
+      const [result] = await pool.query(
         'INSERT INTO group_expenses (user_id, group_id, group_budget_id, expense_type, item_name, item_price, expense_date) VALUES (?, ?, ?, ?, ?, ?, NOW())',
         [
           expenseData.userId,
@@ -134,16 +134,16 @@ module.exports = {
     let connection;
     try {
       connection = await pool.getConnection();
-  
-      // Validate inputs
-      if (!groupId || isNaN(groupId)) {
-        throw new Error('Invalid group ID');
+
+      const [group] = await connection.query(
+        'SELECT id FROM groups WHERE id = ?', 
+        [groupId]
+      );
+      
+      if (!group.length) {
+        throw new Error('Group not found');
       }
-  
-      if (!monthYear || !/^\d{4}-\d{2}$/.test(monthYear)) {
-        throw new Error('Invalid monthYear format (expected YYYY-MM)');
-      }
-  
+      
       const [year, month] = monthYear.split('-');
       const startDate = `${year}-${month}-01`;
   
@@ -156,21 +156,26 @@ module.exports = {
         [groupId, startDate, startDate]
       );
   
-      // Get expenses by member
+      // Get by member
       const [byMember] = await connection.query(
-        `SELECT u.id as user_id, u.username as name, 
-                COALESCE(SUM(ge.item_price), 0) as total
+        `SELECT 
+          u.id as user_id, 
+          u.username as name,
+          COALESCE(
+            (SELECT SUM(ge.item_price) 
+             FROM group_expenses ge
+             WHERE ge.user_id = u.id
+             AND ge.group_id = gm.group_id
+             AND ge.expense_date BETWEEN ? AND LAST_DAY(?)
+            ), 0
+          ) as total
          FROM group_members gm
          JOIN users u ON gm.user_id = u.id
-         LEFT JOIN group_expenses ge ON ge.user_id = u.id
-           AND ge.group_id = ?
-           AND ge.expense_date BETWEEN ? AND LAST_DAY(?)
-         WHERE gm.group_id = ?
-         GROUP BY u.id, u.username`,
-        [groupId, startDate, startDate, groupId]
+         WHERE gm.group_id = ?`,
+        [startDate, startDate, groupId]
       );
   
-      // Get expenses by category
+      // Get by category
       const [byCategory] = await connection.query(
         `SELECT expense_type, COALESCE(SUM(item_price), 0) as total
          FROM group_expenses
@@ -185,10 +190,9 @@ module.exports = {
         byMember: byMember || [],
         byCategory: byCategory || []
       };
-  
     } catch (err) {
-      console.error('Error in getGroupExpenseSummary:', err);
-      throw err;
+      console.error('Summary service error:', err);
+      throw new Error('Failed to generate summary: ' + err.message);
     } finally {
       if (connection) connection.release();
     }
