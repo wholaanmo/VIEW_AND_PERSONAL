@@ -27,7 +27,7 @@
           <span v-if="group.created_at">Created on: {{ formatDate(group.created_at) }}</span>
         </div>
         <button @click="goToGroupManagement" class="manage-groups-btn">
-            <i class="fas fa-users-cog"></i> Manage Groups
+            <i class="fas fa-users-cog"></i> Create or Join a Group
           </button>
       </div>
 
@@ -437,8 +437,8 @@ export default {
       'updateGroupName',
       'deleteGroup'
     ]),
+
     goToGroupManagement() {
-      // Add a flag to indicate intentional navigation
       this.$router.push({ 
         name: 'GC',
         query: { fromGroup: 'true' } 
@@ -472,11 +472,6 @@ export default {
         }
       } catch (err) {
         console.error('Failed to load group data:', err);
-        this.$notify({
-          title: 'Error',
-          message: 'Failed to load group data',
-          type: 'error'
-        });
         this.$router.replace('/GC');
       }
     },
@@ -779,8 +774,31 @@ export default {
         expense_type: 'Food',
         group_id: this.groupId
       };
+    },
+
+ beforeRouteEnter(to, from, next) {
+    if (!to.params.groupId) {
+      next('/GC');
+    } else {
+      next(vm => {
+        if (!vm.hasGroupAccess) {
+          vm.$router.replace('/GC');
+        }
+      });
     }
+  },
+
+  beforeRouteUpdate(to, from, next) {
+    if (!to.params.groupId) {
+      this.$router.replace('/GC');
+      return;
+    }
+    
+    this.groupId = to.params.groupId;
+    this.initializeGroupData()
+      .finally(() => next());
   }
+}
 };
 </script>
 
