@@ -2,6 +2,33 @@
   <Navigation />
 
   <div class="group-container">
+
+    <!-- Add this container for the group list -->
+    <div v-if="showGroupList" class="group-list-container">
+      <div class="group-list-header">
+        <h3>Your Groups</h3>
+        <button @click="toggleGroupList" class="close-group-list">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="group-list">
+        <div 
+          v-for="group in userGroups" 
+          :key="group.id" 
+          class="group-item"
+          @click="navigateToGroup(group.id)"
+          :class="{ active: group.id === $route.params.groupId }"
+        >
+          <div class="group-info">
+            <h4>{{ group.group_name }}</h4>
+            <p>Members: {{ group.member_count }}</p>
+          </div>
+          <div class="group-actions">
+            <i class="fas fa-chevron-right"></i>
+          </div>
+        </div>
+      </div>
+    </div>
     
     <div v-if="loading" class="loading-container">
       <div class="spinner"></div>
@@ -14,22 +41,38 @@
     </div>
 
     <div v-else class="group-content">
-      <div class="group-header">
-        <h1>{{ group.group_name || 'Loading...' }}</h1>
-        <div class="group-code" v-if="group.group_code">
-          <span>Group Code: {{ group.group_code }}</span>
-          <button @click="copyGroupCode" class="copy-button">
-            <i class="far fa-copy"></i>
+    <div class="group-header">
+      <div class="header-top-row">
+        <div class="group-title-section">
+          <h1 class="group-name">{{ group.group_name || 'Loading...' }}</h1>
+          <div class="group-code-badge" v-if="group.group_code">
+            <span>Code: {{ group.group_code }}</span>
+            <button @click="copyGroupCode" class="copy-button">
+              <i class="far fa-copy"></i>
+            </button>
+          </div>
+        </div>
+        <div class="group-action-buttons">
+          <button @click="toggleGroupList" class="my-groups-btn">
+            <i class="fas fa-users"></i> My Groups
+          </button>
+          <button @click="goToGroupManagement" class="manage-groups-btn">
+            <i class="fas fa-users-cog"></i> New Group
           </button>
         </div>
-        <div class="group-meta">
-          <span>Created by: {{ creatorName || 'Loading...' }}</span>
-          <span v-if="group.created_at">Created on: {{ formatDate(group.created_at) }}</span>
-        </div>
-        <button @click="goToGroupManagement" class="manage-groups-btn">
-            <i class="fas fa-users-cog"></i> Create or Join a Group
-          </button>
       </div>
+
+      <div class="group-meta-info">
+        <div class="meta-item">
+          <i class="fas fa-user"></i>
+          <span>Created by: {{ creatorName || 'Loading...' }}</span>
+        </div>
+        <div class="meta-item" v-if="group.created_at">
+          <i class="fas fa-calendar"></i>
+          <span>Created: {{ formatDate(group.created_at) }}</span>
+        </div>
+      </div>
+    </div>
 
       <div class="group-tabs">
         <button 
@@ -323,20 +366,17 @@ import { mapState, mapActions, mapGetters } from 'vuex';
 export default {
   name: 'Group',
   components: { Navigation },
-  beforeRouteEnter(to, from, next) {
-    if (!to.params.groupId) {
-      next('/GC'); // Redirect to GC if no groupId
-    } else {
-      next(vm => {
-        // Additional checks after component instance is created
-        if (!vm.hasGroupAccess) {
-          vm.$router.replace('/GC');
-        }
-      });
+  props: {
+    groupId: {
+      type: [String, Number],
+      required: false,
+      default: null
     }
   },
   data() {
     return {
+      showGroupList: false,
+      userGroups: [],
       groupId: this.$route.params.groupId,
       activeTab: 'expenses',
       currentMonthYear: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
@@ -389,7 +429,20 @@ export default {
     }
   },
 
+  watch: {
+    '$route.params.groupId': {
+      immediate: true,
+      handler(newGroupId) {
+        if (newGroupId && newGroupId !== this.groupId) {
+          this.groupId = newGroupId;
+          this.initializeGroupData();
+        }
+      }
+    }
+  },
+
   async created() {
+    console.log('Group component created');
     const user = JSON.parse(localStorage.getItem('user'));
     const token = localStorage.getItem('jsontoken');
 
@@ -399,17 +452,27 @@ export default {
     return;
   }
 
-  if (!this.$route.params.groupId) {
-    console.error('Missing groupId parameter');
-    this.$router.push('/GC');
-    return;
-  }
+  this.groupId = this.$route.params.groupId;
+
+  console.log('User authenticated, checking groupId');
+    if (!this.groupId) {
+      console.error('Missing groupId parameter');
+      this.$router.push('/GC');
+      return;
+    }
 
   try {
+    console.log('Initializing group data...');
     await this.initializeGroupData();
+    console.log('Fetching group data...');
     await this.fetchGroupData();
+    console.log('Loading expenses...');
     await this.loadExpenses();
+    console.log('Loading summary...');
     await this.loadSummary();
+    console.log('All data loaded successfully');
+
+    await this.fetchUserGroups();
   } catch (err) {
     console.error('Failed to load group data:', err);
     this.$notify({
@@ -438,6 +501,49 @@ export default {
       'deleteGroup'
     ]),
 
+    toggleGroupList() {
+      this.showGroupList = !this.showGroupList;
+      if (this.showGroupList && this.userGroups.length === 0) {
+        this.fetchUserGroups();
+      }
+    },
+    
+    async fetchUserGroups() {
+      try {
+        const response = await this.$axios.get('/api/grp_expenses/my-groups', {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+          }
+        });
+        
+        if (response.data.success) {
+          this.userGroups = response.data.data;
+        }
+      } catch (err) {
+        console.error('Failed to fetch user groups:', err);
+      }
+    },
+    
+    navigateToGroup(groupId) {
+      this.showGroupList = false;
+
+      if (groupId !== this.$route.params.groupId) {
+        this.$router.push({
+          name: 'Group',
+          params: { groupId }
+        }).catch(err => {
+          if (err.name !== 'NavigationDuplicated') {
+            console.error('Navigation error:', err);
+            this.$notify({
+              title: 'Error',
+              message: 'Failed to navigate to group',
+              type: 'error'
+            });
+          }
+        });
+      }
+    },
+
     goToGroupManagement() {
       this.$router.push({ 
         name: 'GC',
@@ -454,10 +560,11 @@ export default {
         return;
       }
 
-      if (!this.$route.params.groupId) {
-        this.$router.push('/GC');
-        return;
-      }
+      const groupId = this.groupId || this.$route.params.groupId;
+  if (!groupId) {
+    this.$router.push('/GC');
+    return;
+  }
 
       try {
         await Promise.all([
@@ -481,6 +588,12 @@ export default {
   if (!user) {
     console.error('No user found in localStorage. Redirecting to login...');
     this.$router.push('/login'); // Redirect to login if no user
+    return;
+  }
+
+  const groupId = this.groupId || this.$route.params.groupId;
+  if (!groupId) {
+    this.$router.push('/GC');
     return;
   }
 
@@ -509,7 +622,6 @@ export default {
     if (err.response?.status === 401 || err.message.includes('not logged in')) {
       this.$router.push('/login');
     } else {
-      // Redirect to group center for any other error
       this.$router.replace('/GC');
     }
   }
@@ -803,15 +915,260 @@ export default {
 </script>
 
 <style scoped>
+.group-content {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 25px;
+  margin-bottom: 30px;
+}
+
+.group-header {
+  margin-bottom: 25px;
+}
+
+.header-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.group-title-section {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.group-name {
+  font-size: 1.8rem;
+  margin: 0;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.group-code-badge {
+  display: flex;
+  align-items: center;
+  background: #f0f4f8;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  gap: 8px;
+}
+
+.copy-button {
+  background: none;
+  border: none;
+  color: #4a6fa5;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.9rem;
+  transition: transform 0.2s;
+}
+
+.copy-button:hover {
+  transform: scale(1.1);
+}
+
+.group-action-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.my-groups-btn {
+  background: #4a6fa5;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.my-groups-btn:hover {
+  background: #3a5a8f;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
 .manage-groups-btn {
   background: #4CAF50;
   color: white;
   padding: 8px 16px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
+
+.manage-groups-btn:hover {
+  background: #3e8e41;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.group-meta-info {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  color: #5a6a7a;
+  font-size: 0.9rem;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta-item i {
+  color: #6c757d;
+}
+
+/* Enhanced Group List Container */
+.group-list-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  background: white;
+  z-index: 1000;
+  box-shadow: 0 5px 25px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.group-list-header {
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #4a6fa5;
+  color: white;
+}
+
+.group-list-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.close-group-list {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.close-group-list:hover {
+  opacity: 1;
+}
+
+.group-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 15px;
+}
+
+.group-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #e9ecef;
+}
+
+.group-item:hover {
+  background: #f8f9fa;
+  border-color: #dee2e6;
+  transform: translateX(3px);
+}
+
+.group-item.active {
+  background: #e6f0ff;
+  border-left: 4px solid #4a6fa5;
+}
+
+.group-info h4 {
+  margin: 0 0 5px 0;
+  font-size: 1rem;
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+.group-info p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.group-actions {
+  color: #adb5bd;
+  font-size: 0.9rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .header-top-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .group-action-buttons {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .group-list-container {
+    width: 95%;
+  }
+}
+.group-list-toggle {
+  position: fixed;
+  top: 80px;
+  left: 20px;
+  background: #4a6fa5;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.group-list-toggle:hover {
+  background: #3a5a8f;
+}
+
 .group-container {
   max-width: 1200px;
   margin: 0 auto;
@@ -868,25 +1225,11 @@ export default {
   cursor: pointer;
 }
 
-.group-header {
-  background-color: #f5f5f5;
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-
 .group-code {
   margin: 10px 0;
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.copy-button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #1976d2;
 }
 
 .group-meta {
