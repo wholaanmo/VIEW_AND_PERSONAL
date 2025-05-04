@@ -2,6 +2,30 @@
   <div class="fixed-container">
     <navigation/>
     <div class="group-management-container">
+
+      <div v-if="userGroups.length > 0" class="user-groups-container">
+        <h2>Your Groups</h2>
+        <div class="group-list">
+          <div 
+            v-for="group in userGroups" 
+            :key="group.id" 
+            class="group-card"
+            @click="navigateToGroup(group.id)"
+          >
+            <div class="group-info">
+              <h3>{{ group.name }}</h3>
+              <p>Created: {{ formatDate(group.created_at) }}</p>
+              <p>Members: {{ group.member_count }}</p>
+            </div>
+            <div class="group-actions">
+              <button class="enter-group-btn">
+                <i class="fas fa-arrow-right"></i> Enter Group
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="centered-content">
       <div class="card">
         <div class="card-header">
@@ -87,6 +111,7 @@
     components: { Navigation },
     data() {
       return {
+        userGroups: [],
         activeTab: 'create',
         groupName: '',
         groupCode: '',
@@ -95,7 +120,45 @@
         isLoading: false
       };
     },
+
+    async created() {
+    await this.fetchUserGroups();
+  },
+  
     methods: {
+      async fetchUserGroups() {
+      try {
+        const response = await this.$axios.get('/api/grp_expenses/my-groups', {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+          }
+        });
+
+        if (response.data.success) {
+          this.userGroups = response.data.data;
+          
+          // If user has exactly one group, redirect to it
+          if (this.userGroups.length === 1) {
+            this.navigateToGroup(this.userGroups[0].id);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch user groups:', err);
+      }
+    },
+
+    navigateToGroup(groupId) {
+      this.$router.push({
+        name: 'Group',
+        params: { groupId }
+      });
+    },
+
+    formatDate(dateString) {
+      // Your date formatting implementation
+      return new Date(dateString).toLocaleDateString();
+    },
+
       async createGroup() {
         if (!this.groupName || this.groupName.length < 3) {
         this.error = 'Group name must be at least 3 characters';
@@ -221,6 +284,40 @@
   </script>
   
   <style scoped>
+  .user-groups-container {
+  margin-bottom: 2rem;
+}
+
+.group-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.group-card {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  justify-content: space-between;
+}
+
+.group-card:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  transform: translateY(-2px);
+}
+
+.enter-group-btn {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
   .fa-spinner {
   animation: fa-spin 2s infinite linear;
   margin-right: 8px; /*NEWWWWWW */
