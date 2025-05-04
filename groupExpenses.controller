@@ -178,7 +178,6 @@ module.exports = {
 
   // Get expense summary for a group (totals, per member, etc.)
   getGroupExpenseSummary: async (req, res) => {
-    let connection;
     try {
       const { groupId } = req.params;
       const { monthYear } = req.query;
@@ -199,53 +198,30 @@ module.exports = {
         });
       }
   
-      connection = await pool.getConnection();
-  
-      // Verify group exists
-      const [group] = await connection.query(
-        'SELECT id FROM groups WHERE id = ?', 
-        [groupId]
-      );
-      
-      if (!group.length) {
-        return res.status(404).json({
-          success: 0,
-          message: "Group not found"
-        });
-      }
-  
-      // Verify user is a member
-      const [member] = await connection.query(
-        'SELECT id FROM group_members WHERE group_id = ? AND user_id = ?',
-        [groupId, userId]
-      );
-      
-      if (!member.length) {
+      // Verify user is a member of the group
+      const isMember = await groupService.isGroupMember(userId, groupId);
+      if (!isMember) {
         return res.status(403).json({
           success: 0,
           message: "You are not a member of this group"
         });
       }
-  
-      const [year, month] = monthYear.split('-');
-      const startDate = `${year}-${month}-01`;
-  
+
       const summary = await groupExpenseService.getGroupExpenseSummary(groupId, monthYear);
 
       return res.json({
         success: 1,
         data: summary
       });
-  
     } catch (err) {
       console.error("Summary controller error:", err);
       return res.status(500).json({
         success: 0,
-        message: "Internal server error",
+        message: err.message.includes('Group not found') 
+          ? "Group not found" 
+          : "Failed to generate summary",
         error: process.env.NODE_ENV === 'development' ? err.message : undefined
       });
-    } finally {
-      if (connection) connection.release();
     }
   },
   
