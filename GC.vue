@@ -1,86 +1,76 @@
 <template>
   <div class="fixed-container">
     <navigation/>
-
-    <button @click="goBackToGroup" class="back-button">
-      <i class="fas fa-arrow-left"></i> Group Page
-    </button>
+    
     <div class="group-management-container">
       <div class="centered-content">
-      <div class="card">
-        <div class="card-header">
-          <h1 class="title">Group Expenses</h1>
-          <div class="tabs">
-            <button @click.prevent="activeTab = 'create'" :class="{ 'tab-button': true, 'active': activeTab === 'create' }">
-              <i class="fas fa-plus-circle"></i> Create Group </button>
+        <div class="card">
+          <div class="card-header">
+            <h1 class="title">Group Expenses</h1>
+            <div class="tabs">
+              <button @click.prevent="activeTab = 'create'" :class="{ 'tab-button': true, 'active': activeTab === 'create' }">
+                <i class="fas fa-plus-circle"></i> Create Group 
+              </button>
 
-            <button @click.prevent="activeTab = 'join'" :class="{ 'tab-button': true, 'active': activeTab === 'join' }">
-              <i class="fas fa-user-plus"></i> Join Group </button>
+              <button @click.prevent="activeTab = 'join'" :class="{ 'tab-button': true, 'active': activeTab === 'join' }">
+                <i class="fas fa-user-plus"></i> Join Group 
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div class="card-body">
-          <transition name="fade" mode="out-in">
-            <div v-if="activeTab === 'create'" class="create-group">
-              <h2 class="section-title">Create New Group</h2>
-
-              <form @submit.prevent="createGroup" class="group-form">
-                <div class="form-group">
-                  <label class="form-label">Group Name</label>
-                  <input v-model="groupName" type="text" class="form-input" placeholder="Enter your group name" required :disabled="isLoading" />
-                </div>
+          <div class="card-body">
+            <transition name="fade" mode="out-in">
+              <div v-if="activeTab === 'create'" class="create-group">
+                <h2 class="section-title">Create New Group</h2>
+                <form @submit.prevent="createGroup" class="group-form">
+                  <div class="form-group">
+                    <label class="form-label">Group Name</label>
+                    <input v-model="groupName" type="text" class="form-input" placeholder="Enter your group name" required :disabled="isLoading" />
+                  </div>
                   <button type="submit" class="submit-button" :disabled="isLoading">
-                  <template v-if="!isLoading">
-                  <i class="fas fa-users"></i> Create Group
-                </template>
-                <template v-else>
+                    <template v-if="!isLoading">
+                      <i class="fas fa-users"></i> Create Group
+                    </template>
+                    <template v-else>
                       <i class="fas fa-spinner fa-spin"></i> Creating...
                     </template>
-                </button> 
-              </form>
-
-              <div v-if="groupCode" class="success-box">
-                <div class="success-icon">
-                  <i class="fas fa-check-circle"></i>
-                </div>
-                <div class="success-content">
-                  <h3>Group Created Successfully!</h3>
-                  <p>Your group join code:</p>
-                  <div class="code-display">{{ groupCode }}</div>
-                  <p class="instruction">Share this code with others to join your group</p>
-                </div>
+                  </button>
+                </form>
+                <button @click="goBackToGroup" class="back-button">
+                  <i class="fas fa-home"></i> Group Page
+                </button>
               </div>
-            </div>
 
-            <div v-else class="join-group">
-              <h2 class="section-title">Join Existing Group</h2>
-
-              <form @submit.prevent="joinGroup" class="group-form">
-                <div class="form-group">
-                  <label class="form-label">Enter Join Code</label>
-                  <input v-model="groupCodeInput" type="text" class="form-input" placeholder="Enter the 6-digit code" required :disabled="isLoading" />
-                </div>
-
-                <button type="submit" class="submit-button" :disabled="isLoading">
+              <div v-else class="join-group">
+                <h2 class="section-title">Join Existing Group</h2>
+                <form @submit.prevent="joinGroup" class="group-form">
+                  <div class="form-group">
+                    <label class="form-label">Enter Join Code</label>
+                    <input v-model="groupCodeInput" type="text" class="form-input" placeholder="Enter the 6-digit code" required :disabled="isLoading" />
+                  </div>
+                  <button type="submit" class="submit-button" :disabled="isLoading">
                     <template v-if="!isLoading">
-                  <i class="fas fa-sign-in-alt"></i> Join Group
-                  </template>
-                  <template v-else>
-                   <i class="fas fa-spinner fa-spin"></i> Joining...
-                  </template>
-                   </button>
-                  </form>
-            </div>
-          </transition>
+                      <i class="fas fa-sign-in-alt"></i> Join Group
+                    </template>
+                    <template v-else>
+                      <i class="fas fa-spinner fa-spin"></i> Joining...
+                    </template>
+                  </button>
+                </form>
+                <button @click="goBackToGroup" class="back-button">
+                  <i class="fas fa-home"></i> Group Page
+                </button>
+              </div>
+            </transition>
 
-          <div v-if="error" class="error-message">
-            <i class="fas fa-exclamation-circle"></i> {{ error }}
+            <div v-if="error" class="error-message">
+              <i class="fas fa-exclamation-circle"></i> {{ error }}
+            </div>
           </div>
         </div>
       </div>
     </div>
-    </div>
-    </div>
+  </div>
   </template>
 
   <script>
@@ -304,26 +294,30 @@
    </script>
    
    <style scoped>
-   .back-button {
-   position: fixed;
-   top: 120px; /* Adjust based on your navbar height */
-   left: 20px;
-   z-index: 100;
-   background: #1976d2;
-   color: white;
-   border: none;
-   padding: 8px 16px;
-   border-radius: 4px;
-   cursor: pointer;
-   display: flex;
-   align-items: center;
-   gap: 5px;
-   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
- }
- 
- .back-button:hover {
-   background: #1565c0;
- }
+.back-button {
+  width: 100%;
+  margin-top: 20px;
+  background: linear-gradient(135deg, #d1d1d1 0%, #5a5a5a 100%);
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.back-button:hover {
+  background: linear-gradient(135deg, #bfbfbf 0%, #444444 100%);
+  transform: translateY(-2px);
+}
+
    .user-groups-container {
    margin-bottom: 2rem;
  }
@@ -407,7 +401,7 @@
    
    .card-header {
      padding: 30px;
-     background: linear-gradient(135deg, #a8e6cf 0%, #81c784 100%);
+     background: linear-gradient(135deg, #c8f5e3 0%, #a6dba1 100%);
      color: white;
      text-align: center;
    }
@@ -419,11 +413,12 @@
    }
    
    .tabs {
-     display: flex;
-     border-radius: 8px;
-     overflow: hidden;
-     background: rgba(255, 255, 255, 0.2);
-   }
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  box-shadow: inset 0 0 5px rgba(255, 255, 255, 0.2);
+}
    
    .tab-button {
      flex: 1;
@@ -440,14 +435,15 @@
      justify-content: center;
      gap: 8px;
    }
-   
    .tab-button.active {
-     background: rgba(255, 255, 255, 0.3);
-     font-weight: 600;
-   }
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(6px);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 rgba(255,255,255,0.6);
+}
    
    .tab-button:hover {
-     background: rgba(255, 255, 255, 0.25);
+     background: rgba(255, 255, 255, 0.2);
    }
  
    .tab-button, .submit-button {
@@ -474,7 +470,7 @@
    }
    
    .group-form {
-     margin-bottom: 25px;
+     margin-bottom: 0px;
    }
    
    .form-group {
@@ -492,29 +488,31 @@
    .form-input {
      width: 98%;
      padding: 12px 5px;
-     border: 1px solid #ddd;
+     border: 1px solid #ccc;
      border-radius: 8px;
      font-size: 16px;
-     transition: border-color 0.3s;
+     background: #fcfcfc;
+  transition: all 0.3s ease;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
    }
    
    .form-input:focus {
      outline: none;
-     border-color: #42b983;
-     box-shadow: 0 0 0 3px rgba(66, 185, 131, 0.2);
+     border-color: #43cea2;
+     box-shadow: 0 0 0 3px rgba(67, 206, 162, 0.25);
    }
    
    .submit-button {
      width: 100%;
      padding: 14px;
-     background: linear-gradient(135deg, #a8e6cf 0%, #81c784 100%);
+     background: linear-gradient(135deg, #b2f0dd 0%, #4caf7a 100%);
      color: white;
      border: none;
      border-radius: 8px;
-     font-size: 16px;
-     font-weight: 500;
+     font-size: 17px;
+     font-weight: 700;
      cursor: pointer;
-     transition: all 0.3s ease;
+     transition: transform 0.2s ease, box-shadow 0.2s ease;
      display: flex;
      align-items: center;
      justify-content: center;
@@ -522,8 +520,9 @@
    }
    
    .submit-button:hover {
-     transform: translateY(-2px);
-     box-shadow: 0 5px 15px rgba(66, 185, 131, 0.3);
+    background: linear-gradient(135deg, #a0e8d2 0%, #388e5c 100%);
+    transform: scale(1.02);
+    box-shadow: 0 6px 15px rgba(24, 90, 157, 0.3);
    }
    
    .success-box {
