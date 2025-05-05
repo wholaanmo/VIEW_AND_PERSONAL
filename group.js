@@ -11,11 +11,6 @@ export default {
       },
       members: [],  // Add this
       expenses: [], // Add this
-      summary: {
-        total: 0,
-        byMember: [],
-        byCategory: []
-      },
       loading: false,
       error: null,
       isAdmin: false
@@ -30,9 +25,6 @@ export default {
       SET_EXPENSES(state, expenses) {
         state.expenses = expenses;
       },
-      SET_SUMMARY(state, summary) {
-        state.summary = summary;
-      },
       SET_LOADING(state, loading) {
         state.loading = loading;
       },
@@ -43,6 +35,9 @@ export default {
         state.isAdmin = isAdmin;
       },
       ADD_EXPENSE(state, expense) {
+        if (!state.expenses) {
+          state.expenses = []; // Initialize if undefined
+        }
         state.expenses.push(expense);
       },
       UPDATE_EXPENSE(state, updatedExpense) {
@@ -91,80 +86,44 @@ export default {
       }
   
     // Fetch group info
-    const groupRes = await axios.get(`/api/grp_expenses/${groupId}`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
-      }
-    });
+    const [groupRes, membersRes] = await Promise.all([
+      axios.get(`/api/grp_expenses/${groupId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+        },
+        timeout: 10000 // 10 seconds timeout
+      }),
+      axios.get(`/api/grp_expenses/${groupId}/members`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+        }
+      })
+    ]);
     
-    console.log('Group API Response:', groupRes.data);
-
-    if (!groupRes.data?.success) {
-      throw new Error(groupRes.data?.message || 'Group fetch failed');
-    }
-
-    if (!groupRes.data?.data) {
-      throw new Error('Invalid group data response');
-    }
-
-    if (!groupRes.data.data.group_name || !groupRes.data.data.group_code) {
-      throw new Error('Invalid group data structure');
+    if (!groupRes.data?.success || !membersRes.data?.success) {
+      throw new Error('Failed to fetch group data');
     }
 
     commit('SET_GROUP', groupRes.data.data);
-    
-    // Fetch members
-    const membersRes = await axios.get(`/api/grp_expenses/${groupId}/members`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
-      }
-    });
-    
-    console.log('Members API Response:', membersRes.data);
-
-    if (!membersRes.data?.success) {
-      throw new Error(membersRes.data?.message || 'Members fetch failed');
-    }
-
-    if (!Array.isArray(membersRes.data.data)) {
-      throw new Error('Invalid members data format');
-    }
-
     commit('SET_MEMBERS', membersRes.data.data);
 
+    // Check admin status
     const user = JSON.parse(localStorage.getItem('user'));
-    if (!user?.id) {
-      commit('SET_ADMIN', false);
-      throw new Error('User not logged in');
-    }
-
-    const currentMember = membersRes.data.data?.find(m => m.id === user.id);
+    const currentMember = membersRes.data.data.find(m => m.id === user?.id);
     commit('SET_ADMIN', currentMember?.role === 'admin');
     
     return groupRes.data.data;
   } catch (err) {
-    console.error('Error in fetchGroup:', {
-      error: err,
-      response: err.response?.data,
-      config: err.config
-    });
-    
-    let errorMsg = err.message;
-    if (err.response) {
-      if (err.response.status === 404) {
-        errorMsg = 'Group not found';
-      } else if (err.response.status === 401) {
-        errorMsg = 'Unauthorized - please login again';
-      }
+    if (err.code === 'ECONNABORTED') {
+      commit('SET_ERROR', 'Request timeout. Please try again.');
+    } else {
+      commit('SET_ERROR', err.response?.data?.message || err.message);
     }
-    
-    commit('SET_ERROR', errorMsg);
     throw err;
   } finally {
     commit('SET_LOADING', false);
   }
 },
-
       
       async fetchExpenses({ commit }, { groupId, monthYear }) {
         commit('SET_LOADING', true);
@@ -183,46 +142,31 @@ export default {
         }
       },
       
-      async fetchSummary({ commit }, { groupId, monthYear }) {
-        commit('SET_LOADING', true);
-        commit('SET_ERROR', null);
-
-        try {
-          const res = await axios.get(`/api/grp_expenses/${groupId}/summary`, {
-            params: { monthYear },
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
-            }
-          });
-
-          if (!res.data?.success) {
-            throw new Error(res.data?.message || 'Failed to load summary');
-          }
-
-          commit('SET_SUMMARY', {
-            total: res.data.data.total || 0,
-            byMember: res.data.data.byMember || [],
-            byCategory: res.data.data.byCategory || []
-          });
-
-        } catch (err) {
-          commit('SET_ERROR', err.response?.data?.message || err.message);
-          console.error('Summary fetch error:', {
-            error: err,
-            response: err.response?.data
-          });
-          throw err;
-        } finally {
-          commit('SET_LOADING', false);
-        }
-      },
-      
       async addExpense({ commit }, expenseData) {
         try {
-          const res = await axios.post('/api/grp_expenses/add', expenseData);
+          const res = await axios.post(
+            `/api/grp_expenses/${expenseData.group_id}/expenses`,
+            expenseData,
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+              }
+            }
+          );
+          
+          if (!res.data.success) {
+            throw new Error(res.data.message || 'Failed to add expense');
+          }
+
+          console.log('Expense added:', res.data.data);
+          
           commit('ADD_EXPENSE', res.data.data);
           return res.data;
         } catch (err) {
+          console.error('Add expense error:', {
+            error: err,
+            response: err.response?.data
+          });
           throw err;
         }
       },
@@ -297,7 +241,6 @@ export default {
         const creator = state.members.find(m => m.id === state.currentGroup.created_by);
         return creator ? creator.username : '';
       },
-      currentMonthExpenses: (state) => state.expenses,
-      currentSummary: (state) => state.summary
+      currentMonthExpenses: (state) => state.expenses
     }
   };
