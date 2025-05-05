@@ -1,21 +1,31 @@
 import { createStore } from 'vuex';
 import axios from 'axios';
+import groupModule from './modules/group'
 
 export default createStore({
+  modules: {
+    group: groupModule 
+  },
   state: {
-    expenses: [],
+    viewExpenses: [], // Expenses for view page
+    addExpenses: [], 
     personalBudgets: [],
     usdExchangeRate: 56.50,
-    selectedMonthYear: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'),
+    viewPageMonthYear: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'), // For view page
+    addExpenseMonthYear: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'), // For add expense page
     globalAlert: null
   },
   getters: {
+    getViewExpenses: state => state.viewExpenses,
+    getAddExpenses: state => state.addExpenses,
+    getViewPageMonthYear: state => state.viewPageMonthYear,
+    getAddExpenseMonthYear: state => state.addExpenseMonthYear,
     getExpenses: state => {
       if (!state.expenses || !Array.isArray(state.expenses)) {
         return [];
       }
 
-      const monthYear = state.selectedMonthYear || 
+      const monthYear = state.viewPageMonthYear || 
                        `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
       
       return state.expenses.filter(expense => {
@@ -38,35 +48,36 @@ export default createStore({
     getPersonalBudgets: state => state.personalBudgets,
 
     getTotalAmount: (state, getters) => {
-      const filteredExpenses = getters.getExpenses;
-      console.log('Calculating total amount from filtered expenses:', filteredExpenses);
+      const filteredExpenses = state.addExpenses || [];
+      console.log('Calculating total from:', filteredExpenses);
       return filteredExpenses.reduce((sum, expense) => {
         const price = Number(expense?.item_price) || 0;
         return sum + price;
       }, 0);
     },
-    getCurrentBudget: state => {
+    getCurrentBudget: (state) => (monthYear) => {
       try {
-        console.log('Finding budget for:', state.selectedMonthYear);
-        console.log('Available budgets:', state.personalBudgets);
         if (!state.personalBudgets || !Array.isArray(state.personalBudgets)) {
-          return null;
+          return { 
+            budget_amount: 0,
+            month_year: monthYear
+          };
         }
-        
-        const currentBudget = state.personalBudgets.find(
-          b => b?.month_year === state.selectedMonthYear
-        );
-        
-        console.log('Found budget:', currentBudget);
-        return currentBudget || { 
-          budget_amount: 0, 
-          month_year: state.selectedMonthYear 
+        return state.personalBudgets.find(
+          b => b.month_year === monthYear
+        ) || { 
+          budget_amount: 0,
+          month_year: monthYear
         };
       } catch (error) {
         console.error("Error in getCurrentBudget:", error);
-        return null;
+        return { 
+          budget_amount: 0,
+          month_year: monthYear
+        };
       }
-    },
+    }, 
+
     getAvailableMonths: () => {
       const months = []
       const date = new Date()
@@ -80,6 +91,19 @@ export default createStore({
     }
   },
   mutations: {
+    SET_VIEW_EXPENSES(state, expenses) {
+      state.viewExpenses = expenses
+    },
+    SET_ADD_EXPENSES(state, expenses) {
+      state.addExpenses = expenses
+    },
+    SET_VIEW_PAGE_MONTH_YEAR(state, monthYear) {
+      state.viewPageMonthYear = monthYear;
+    },
+    SET_ADD_EXPENSE_MONTH_YEAR(state, monthYear) {
+      state.addExpenseMonthYear = monthYear;
+    },
+
     SET_EXPENSES(state, expenses) {
       state.expenses = expenses
     },
@@ -141,7 +165,7 @@ export default createStore({
       }
     },
     DELETE_EXPENSE(state, id) {
-      state.expenses = state.expenses.filter(e => e.id !== id)
+      state.addExpenses = state.addExpenses.filter(e => e.id !== id);
     },
     ADD_BUDGET(state, budget) {
       state.personalBudgets.push(budget)
@@ -166,36 +190,55 @@ export default createStore({
         return { success: false, message: error.message }
       }
     },
-    async fetchExpenses({ commit, state }) {
+    async fetchViewExpenses({ commit, state }) {
       try {
         const response = await axios.get('/api/expenses', {
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
           params: {
-            monthYear: state.selectedMonthYear
+            monthYear: state.viewPageMonthYear
           }
         });
-        
-        commit('SET_EXPENSES', response.data.data || [])
+        commit('SET_VIEW_EXPENSES', response.data.data || [])
         return { success: true }
       } catch (error) {
-        console.error("Error fetching expenses:", error)
-        commit('SET_EXPENSES', [])
+        console.error("Error fetching view expenses:", error)
+        commit('SET_VIEW_EXPENSES', [])
         return { success: false, message: error.message }
       }
     },
-    async fetchPersonalBudgets({ commit }) {
+    
+    async fetchAddExpenses({ commit, state }) {
       try {
-        const response = await axios.get('/api/personal-budgets', {
-          headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` }
-        })
-        commit('SET_PERSONAL_BUDGETS', response.data.data || [])
+        const response = await axios.get('/api/expenses', {
+          headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
+          params: {
+            monthYear: state.addExpenseMonthYear
+          }
+        });
+        commit('SET_ADD_EXPENSES', response.data.data || [])
         return { success: true }
       } catch (error) {
-        console.error("Error fetching budgets:", error)
-        commit('SET_PERSONAL_BUDGETS', [])
+        console.error("Error fetching add expenses:", error)
+        commit('SET_ADD_EXPENSES', [])
         return { success: false, message: error.message }
       }
     },
+    async fetchPersonalBudgets({ commit }, monthYear = null) {
+      try {
+        const params = monthYear ? { month_year: monthYear } : {};
+        const response = await axios.get('/api/personal-budgets', {
+          headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
+          params
+        });
+        commit('SET_PERSONAL_BUDGETS', response.data.data || []);
+        return { success: true };
+      } catch (error) {
+        console.error("Error fetching budgets:", error);
+        commit('SET_PERSONAL_BUDGETS', []);
+        return { success: false, message: error.message };
+      }
+    },
+
     async addExpense({ commit }, expenseData) {
       try {
 
@@ -287,19 +330,23 @@ async updateExpense({ commit }, { id, expenseData }) {
     };
   }
 },
-    async deleteExpense({ commit }, id) {
+async deleteExpense({ commit, dispatch }, id) {
       try {
         const response = await axios.delete(`/api/expenses/${id}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` }
-        })
+        });
         if (response.data.success) {
-          commit('DELETE_EXPENSE', id)
-          return { success: true }
+          commit('DELETE_EXPENSE', id);
+          await dispatch('fetchAddExpenses');
+          return { success: true, message: 'Expense deleted successfully' };
         }
-        return { success: false, message: response.data.message }
+        return { success: false, message: response.data.message || 'Failed to delete expense' };
       } catch (error) {
-        console.error("Error deleting expense:", error)
-        return { success: false, message: error.response?.data?.message || 'Failed to delete expense' }
+        console.error("Error deleting expense:", error);
+        return { 
+          success: false, 
+          message: error.response?.data?.message || 'Failed to delete expense' 
+        };
       }
     },
     async addBudget({ commit }, budgetData) {
@@ -327,20 +374,12 @@ async updateExpense({ commit }, { id, expenseData }) {
         };
       }
     },
-    async updateBudget({ commit, state }, budgetData) {
+    async updateBudget({ commit }, budgetData) {
       try {
-        const currentBudget = state.personalBudgets.find(
-          b => b.month_year === state.selectedMonthYear
-        );
-        
-        if (!currentBudget) {
-          return { success: false, message: 'No budget found for current month' };
-        }
-        
         const response = await axios.put(
-          `/api/personal-budgets/${currentBudget.id}`,
+          `/api/personal-budgets/${budgetData.id}`,
           {
-            month_year: budgetData.month_year || currentBudget.month_year,
+            month_year: budgetData.month_year,
             budget_amount: budgetData.budget_amount
           },
           {
