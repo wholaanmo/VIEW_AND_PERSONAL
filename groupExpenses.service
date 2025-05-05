@@ -1,215 +1,166 @@
-const pool = require('../../config/database'); 
+const pool = require('../../config/database');
 
-module.exports = {
-  // Add a new group expense
-  addGroupExpense: async (expenseData) => {
+const GroupExpenseService = {
+  getGroupExpenseById: async (expenseId) => {
+    let connection;
     try {
-      // Verify group budget exists if provided
-      if (expenseData.group_budget_id) {
-        const budget = await db.query(
-          'SELECT id FROM group_budgets WHERE id = ? AND group_id = ?',
-          [expenseData.group_budget_id, expenseData.group_id]
-        );
-        if (budget.length === 0) {
-          throw new Error('The specified group budget does not exist');
-        }
-      }
-
-      const [result] = await pool.query(
-        'INSERT INTO group_expenses (user_id, group_id, group_budget_id, expense_type, item_name, item_price, expense_date) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-        [
-          expenseData.userId,
-          expenseData.group_id,
-          expenseData.group_budget_id || null,
-          expenseData.expense_type,
-          expenseData.item_name,
-          expenseData.item_price
-        ]
+      connection = await pool.getConnection();
+      const [rows] = await connection.query(
+        'SELECT ge.*, u.username as user_name FROM group_expenses ge JOIN users u ON ge.user_id = u.id WHERE ge.id = ?',
+        [expenseId]
       );
-
-      return this.getGroupExpenseById(result.insertId);
+      return rows[0] || null;
     } catch (err) {
-      throw err;
+      console.error('Error fetching expense by ID:', err);
+      throw new Error('Failed to fetch expense');
+    } finally {
+      if (connection) connection.release();
     }
   },
 
-  // Edit a group expense
+// Add new expense
+addGroupExpense: async (expenseData) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    
+    // Start transaction
+    await connection.beginTransaction();
+
+    // Insert expense
+    const [result] = await connection.query(
+      `INSERT INTO group_expenses 
+      (user_id, group_id, item_name, item_price, expense_type, expense_date)
+      VALUES (?, ?, ?, ?, ?, NOW())`,
+      [
+        expenseData.userId,
+        expenseData.group_id,
+        expenseData.item_name,
+        expenseData.item_price,
+        expenseData.expense_type
+      ]
+    );
+
+    // Get full expense details with user name
+    const [expense] = await connection.query(
+      `SELECT ge.*, u.username as user_name 
+      FROM group_expenses ge
+      JOIN users u ON ge.user_id = u.id
+      WHERE ge.id = ?`,
+      [result.insertId]
+    );
+
+    await connection.commit();
+    return expense[0];
+  } catch (err) {
+    if (connection) await connection.rollback();
+    console.error('Add expense error:', err);
+    throw new Error('Failed to add expense');
+  } finally {
+    if (connection) connection.release();
+  }
+},
+
   editGroupExpense: async (expenseData) => {
+    let connection;
     try {
-      await db.query(
-        'UPDATE group_expenses SET item_price = ?, expense_type = ?, item_name = ? WHERE id = ?',
+      connection = await pool.getConnection();
+      await connection.query(
+        `UPDATE group_expenses SET
+        item_name = ?,
+        item_price = ?,
+        expense_type = ?
+        WHERE id = ?`,
         [
+          expenseData.item_name,
           expenseData.item_price,
           expenseData.expense_type,
-          expenseData.item_name,
           expenseData.id
         ]
       );
-      return this.getGroupExpenseById(expenseData.id);
+      return await GroupExpenseService.getGroupExpenseById(expenseData.id);
     } catch (err) {
-      throw err;
+      console.error('Update expense error:', err);
+      throw new Error('Failed to update expense');
+    } finally {
+      if (connection) connection.release();
     }
   },
 
-  // Delete a group expense
   deleteGroupExpense: async (expenseId) => {
+    let connection;
     try {
-      await db.query('DELETE FROM group_expenses WHERE id = ?', [expenseId]);
-      return true;
-    } catch (err) {
-      throw err;
-    }
-  },
-
-  // Get expenses for a specific group and month
-  getGroupExpenses: async (groupId, monthYear) => {
-    try {
-      const [year, month] = monthYear.split('-');
-      const startDate = `${year}-${month}-01`;
-      const endDate = `${year}-${month}-31`;
-
-      const [expenses] = await db.query(
-        `SELECT ge.*, u.name as user_name 
-         FROM group_expenses ge
-         JOIN users u ON ge.user_id = u.id
-         WHERE ge.group_id = ? 
-         AND ge.expense_date BETWEEN ? AND LAST_DAY(?)
-         ORDER BY ge.expense_date DESC`,
-        [groupId, startDate, startDate]
-      );
-
-      return expenses;
-    } catch (err) {
-      throw err;
-    }
-  },
-
-  // Get expense by ID
-  getGroupExpenseById: async (expenseId) => {
-    try {
-      const [expense] = await db.query(
-        `SELECT ge.*, u.name as user_name 
-         FROM group_expenses ge
-         JOIN users u ON ge.user_id = u.id
-         WHERE ge.id = ?`,
+      connection = await pool.getConnection();
+      await connection.query(
+        'DELETE FROM group_expenses WHERE id = ?',
         [expenseId]
       );
-      return expense[0] || null;
+      return true;
     } catch (err) {
-      throw err;
+      console.error('Delete expense error:', err);
+      throw new Error('Failed to delete expense');
+    } finally {
+      if (connection) connection.release();
     }
   },
 
-  // Check if user can edit an expense (creator or admin)
+ // Get expenses for group and month
+ getGroupExpenses: async (groupId, monthYear) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [year, month] = monthYear.split('-');
+    const startDate = `${year}-${month}-01`;
+
+    const [expenses] = await connection.query(
+      `SELECT ge.*, u.username as user_name 
+      FROM group_expenses ge
+      JOIN users u ON ge.user_id = u.id
+      WHERE ge.group_id = ?
+      AND DATE(ge.expense_date) BETWEEN ? AND LAST_DAY(?)
+      ORDER BY ge.expense_date DESC`,
+      [groupId, startDate, startDate]
+    );
+
+    return expenses;
+  } catch (err) {
+    console.error('Get expenses error:', err);
+    throw new Error('Failed to get expenses');
+  } finally {
+    if (connection) connection.release();
+  }
+},
+
   canUserEditExpense: async (userId, expenseId) => {
+    let connection;
     try {
-      // Check if user is the creator
-      const [expense] = await db.query(
+      connection = await pool.getConnection();
+      
+      // Get the expense first
+      const [expense] = await connection.query(
         'SELECT user_id, group_id FROM group_expenses WHERE id = ?',
         [expenseId]
       );
       
-      if (expense.length === 0) return false;
+      if (!expense.length) return false;
+      
+      // Check if creator
       if (expense[0].user_id === userId) return true;
-
-      // Check if user is admin of the group
-      const [membership] = await db.query(
+      
+      // Check if admin
+      const [membership] = await connection.query(
         'SELECT role FROM group_members WHERE user_id = ? AND group_id = ?',
         [userId, expense[0].group_id]
       );
       
       return membership.length > 0 && membership[0].role === 'admin';
     } catch (err) {
+      console.error('Check edit permission error:', err);
       throw err;
-    }
-  },
-
-  // Check if user can delete an expense (same as edit permissions)
-  canUserDeleteExpense: async (userId, expenseId) => {
-    return this.canUserEditExpense(userId, expenseId);
-  },
-
-  // Get expense summary for a group
-  getGroupExpenseSummary: async (groupId, monthYear) => {
-    let connection;
-    try {
-      connection = await pool.getConnection();
-
-      const [group] = await connection.query(
-        'SELECT id FROM groups WHERE id = ?', 
-        [groupId]
-      );
-      
-      if (!group.length) {
-        throw new Error('Group not found');
-      }
-      
-      const [year, month] = monthYear.split('-');
-      const startDate = `${year}-${month}-01`;
-  
-      // Get total expenses
-      const [totalResult] = await connection.query(
-        `SELECT COALESCE(SUM(item_price), 0) as total
-         FROM group_expenses
-         WHERE group_id = ?
-         AND expense_date BETWEEN ? AND LAST_DAY(?)`,
-        [groupId, startDate, startDate]
-      );
-  
-      // Get by member
-      const [byMember] = await connection.query(
-        `SELECT 
-          u.id as user_id, 
-          u.username as name,
-          COALESCE(
-            (SELECT SUM(ge.item_price) 
-             FROM group_expenses ge
-             WHERE ge.user_id = u.id
-             AND ge.group_id = gm.group_id
-             AND ge.expense_date BETWEEN ? AND LAST_DAY(?)
-            ), 0
-          ) as total
-         FROM group_members gm
-         JOIN users u ON gm.user_id = u.id
-         WHERE gm.group_id = ?`,
-        [startDate, startDate, groupId]
-      );
-  
-      // Get by category
-      const [byCategory] = await connection.query(
-        `SELECT expense_type, COALESCE(SUM(item_price), 0) as total
-         FROM group_expenses
-         WHERE group_id = ?
-         AND expense_date BETWEEN ? AND LAST_DAY(?)
-         GROUP BY expense_type`,
-        [groupId, startDate, startDate]
-      );
-  
-      return {
-        total: Number(totalResult[0]?.total) || 0,
-        byMember: byMember || [],
-        byCategory: byCategory || []
-      };
-    } catch (err) {
-      console.error('Summary service error:', err);
-      throw new Error('Failed to generate summary: ' + err.message);
     } finally {
       if (connection) connection.release();
     }
-  },
-
-  getGroupInfo: async (groupId) => {
-    try {
-      const [group] = await db.query(
-        `SELECT g.*, u.name as creator_name 
-         FROM groups g
-         JOIN users u ON g.created_by = u.id
-         WHERE g.id = ?`,
-        [groupId]
-      );
-      return group[0] || null;
-    } catch (err) {
-      throw err;
-    }
   }
 };
+
+module.exports = GroupExpenseService;
