@@ -3,53 +3,48 @@ const groupService = require('../grp_expenses/group.service');
 const pool = require('../../config/database');
 
 module.exports = {
-  // Add a new group expense
   addGroupExpense: async (req, res) => {
     try {
-      const { item_price, expense_type, item_name, group_budget_id, group_id } = req.body;
+      const { item_price, expense_type, item_name } = req.body;
       const userId = req.user.userId;
-
+      const groupId = req.params.groupId;
+  
       // Validate required fields
-      if (!item_price || !expense_type || !item_name || !group_id) {
+      if (!item_price || !expense_type || !item_name) {
         return res.status(400).json({
           success: 0,
-          message: "Missing required fields (item_price, expense_type, item_name, group_id)"
+          message: "Missing required fields (item_price, expense_type, item_name)"
         });
       }
-
+  
       // Verify user is a member of the group
-      const isMember = await groupService.isGroupMember(userId, group_id);
+      const isMember = await groupService.isGroupMember(userId, groupId);
       if (!isMember) {
         return res.status(403).json({
           success: 0,
           message: "You are not a member of this group"
         });
       }
-
+  
       // Add the expense
       const expense = await groupExpenseService.addGroupExpense({
         userId,
-        group_id,
+        group_id: groupId,
         item_price,
         expense_type,
-        item_name,
-        group_budget_id
+        item_name
       });
-
+  
       return res.status(200).json({
         success: 1,
         message: "Group expense added successfully",
         data: expense
       });
     } catch (err) {
-      let message = "Database error";
-      if (err.message === "The specified group budget does not exist") {
-        message = err.message;
-      }
       console.error("Add group expense error:", err);
       return res.status(500).json({
         success: 0,
-        message: message
+        message: err.message || "Failed to add expense"
       });
     }
   },
@@ -58,87 +53,58 @@ module.exports = {
   editGroupExpense: async (req, res) => {
     try {
       const { item_price, expense_type, item_name } = req.body;
+      const expenseId = req.params.expenseId || req.params.id;
       const userId = req.user.userId;
-      const expenseId = req.params.id;
-
-      const expense = req.expense;
-
-      if (!item_price || !expense_type || !item_name) {
-        return res.status(400).json({
-          success: 0,
-          message: "Missing required fields"
-        });
-      }
-
-      // Verify user can edit this expense (creator or admin)
       const canEdit = await groupExpenseService.canUserEditExpense(userId, expenseId);
-      if (!canEdit) {
-        return res.status(403).json({
-          success: 0,
-          message: "You don't have permission to edit this expense"
+        if (!canEdit) {
+            return res.status(403).json({
+                success: 0,
+                message: "You don't have permission to edit this expense"
+            });
+        }
+
+        const updatedExpense = await groupExpenseService.editGroupExpense({
+            id: expenseId,
+            item_price,
+            expense_type,
+            item_name
         });
-      }
 
-      await groupExpenseService.editGroupExpense({
-        id: expenseId,
-        item_price,
-        expense_type,
-        item_name
-      });
-
-      return res.json({
-        success: 1,
-        message: "Group expense updated successfully"
-      });
+        return res.json({
+            success: 1,
+            message: "Expense updated successfully",
+            data: updatedExpense
+        });
     } catch (err) {
-      let message = "Database error";
-      if (err.message === "Expense not found or unauthorized") {
-        message = err.message;
-      }
-      console.error("Edit group expense error:", err);
-      return res.status(500).json({
-        success: 0,
-        message: message
-      });
+        console.error("Edit group expense error:", err);
+        return res.status(500).json({
+            success: 0,
+            message: err.message || "Failed to update expense"
+        });
     }
-  },
+},
 
-  // Delete a group expense
-  deleteGroupExpense: async (req, res) => {
+deleteGroupExpense: async (req, res) => {
     try {
-      const { id } = req.params;
-      const userId = req.user.userId;
-
-      const expenseId = req.params.expenseId;
-
-      // Verify user can delete this expense (creator or admin)
-      const canDelete = await groupExpenseService.canUserDeleteExpense(userId, id);
-      if (!canDelete) {
-        return res.status(403).json({
-          success: 0,
-          message: "You don't have permission to delete this expense"
-        });
-      }
-
-      await groupExpenseService.deleteGroupExpense(id);
-
+      const expenseId = req.params.expenseId || req.params.id;
+      await groupExpenseService.deleteGroupExpense(expenseId);
+      
       return res.json({
         success: 1,
-        message: "Group expense deleted successfully"
+        message: "Expense deleted successfully"
       });
     } catch (err) {
-      console.error("Delete group expense error:", err);
+      console.error("Delete error:", err);
       return res.status(500).json({
         success: 0,
-        message: err.message || "Database error"
+        message: err.message || "Deletion failed"
       });
     }
-  },
+},
 
   // Get expenses for a specific group
   getGroupExpenses: async (req, res) => {
     try {
-      const userId = req.user.userId;
       const groupId = req.params.groupId;
       const monthYear = req.query.monthYear || 
         `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
@@ -147,119 +113,59 @@ module.exports = {
       if (!/^\d{4}-\d{2}$/.test(monthYear)) {
         return res.status(400).json({
           success: 0,
-          message: "Invalid monthYear format (expected YYYY-MM)"
+          message: "Invalid month format (use YYYY-MM)"
         });
       }
 
-      // Verify user is a member of the group
-      const isMember = await groupService.isGroupMember(userId, groupId);
-      if (!isMember) {
-        return res.status(403).json({
-          success: 0,
-          message: "You are not a member of this group"
-        });
-      }
-
-      // Get expenses with member information
-      const results = await groupExpenseService.getGroupExpenses(groupId, monthYear);
-
+      const expenses = await groupExpenseService.getGroupExpenses(groupId, monthYear);
+      
       return res.json({
         success: 1,
-        data: results
+        data: expenses
       });
     } catch (err) {
-      console.error("Get group expenses error:", err);
+      console.error("Get expenses error:", err);
       return res.status(500).json({
         success: 0,
-        message: "Database error"
+        message: "Failed to fetch expenses"
       });
     }
-  },
-
-  // Get expense summary for a group (totals, per member, etc.)
-  getGroupExpenseSummary: async (req, res) => {
-    try {
-      const { groupId } = req.params;
-      const { monthYear } = req.query;
-      const userId = req.user.userId;
-  
-      // Validate inputs
-      if (!groupId || isNaN(groupId)) {
-        return res.status(400).json({ 
-          success: 0,
-          message: "Invalid group ID" 
-        });
-      }
-  
-      if (!monthYear || !/^\d{4}-\d{2}$/.test(monthYear)) {
-        return res.status(400).json({
-          success: 0,
-          message: "Invalid monthYear format (expected YYYY-MM)"
-        });
-      }
-  
-      // Verify user is a member of the group
-      const isMember = await groupService.isGroupMember(userId, groupId);
-      if (!isMember) {
-        return res.status(403).json({
-          success: 0,
-          message: "You are not a member of this group"
-        });
-      }
-
-      const summary = await groupExpenseService.getGroupExpenseSummary(groupId, monthYear);
-
-      return res.json({
-        success: 1,
-        data: summary
-      });
-    } catch (err) {
-      console.error("Summary controller error:", err);
-      return res.status(500).json({
-        success: 0,
-        message: err.message.includes('Group not found') 
-          ? "Group not found" 
-          : "Failed to generate summary",
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-      });
-    }
-  },
+},
   
 // Middleware to verify expense ownership
 verifyExpenseOwnership: async (req, res, next) => {
-    try {
-      const expenseId = req.params.expenseId;
-      const userId = req.user.userId;
-      
-      const expense = await groupExpenseService.getGroupExpenseById(expenseId);
-      
-      if (!expense) {
-        return res.status(404).json({
-          success: 0,
-          message: "Expense not found"
-        });
-      }
-      
-      // Check if user is expense creator or group admin
-      const isCreator = expense.user_id === userId;
-      const isAdmin = await groupService.isGroupAdmin(userId, req.params.groupId);
-      
-      if (!isCreator && !isAdmin) {
-        return res.status(403).json({
-          success: 0,
-          message: "You don't have permission to modify this expense"
-        });
-      }
-      
-      // Attach expense to request for use in controller
-      req.expense = expense;
-      next();
-    } catch (err) {
-      console.error("Ownership verification error:", err);
-      return res.status(500).json({
+  try {
+    const expenseId = req.params.expenseId || req.params.id;
+    const userId = req.user.userId;
+    
+    const expense = await groupExpenseService.getGroupExpenseById(expenseId);
+    
+    if (!expense) {
+      return res.status(404).json({
         success: 0,
-        message: "Internal server error"
+        message: "Expense not found"
       });
     }
+    
+    // Check permissions
+    const isCreator = expense.user_id == userId;  // Note: == for loose comparison
+    const isAdmin = await groupService.isGroupAdmin(userId, expense.group_id);
+    
+    if (!isCreator && !isAdmin) {
+      return res.status(403).json({
+        success: 0,
+        message: "Unauthorized to modify this expense"
+      });
+    }
+    
+    req.expense = expense;
+    next();
+  } catch (err) {
+    console.error("Ownership verification error:", err);
+    return res.status(500).json({
+      success: 0,
+      message: "Internal server error"
+    });
   }
+}
 };
