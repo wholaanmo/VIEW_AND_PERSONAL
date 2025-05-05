@@ -35,7 +35,7 @@
       <p>Loading group data...</p>
     </div>
 
-    <div v-else-if="error" class="error-container">
+    <div v-else-if="expensesError" class="error-container">
       <p class="error-message">{{ error }}</p>
       <button @click="fetchGroupData" class="retry-button">Retry</button>
     </div>
@@ -330,7 +330,8 @@ export default {
       userGroups: [],
       activeTab: 'expenses',
       currentMonthYear: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
-      
+      expensesError: null,
+      expensesLoading: false,
       // Modals
       showAddExpenseModal: false,
       showEditExpenseModal: false,
@@ -566,9 +567,18 @@ export default {
 },
     
     async loadExpenses() {
+      this.expensesLoading = true;
+      this.expensesError = null;
+      try {
+
     const monthYear = this.formatMonthYear(this.currentMonthYear);
     await this.fetchExpenses({ groupId: this.localGroupId, monthYear });
-  },
+    } catch (err) {
+    this.expensesError = err.response?.data?.message || 'Failed to load expenses';
+  } finally {
+    this.expensesLoading = false;
+  }
+},
     
     formatDate(dateString) {
       if (!dateString) return '';
@@ -618,7 +628,7 @@ export default {
       item_name: this.newExpense.item_name,
       item_price: parseFloat(this.newExpense.item_price),
       expense_type: this.newExpense.expense_type,
-      group_id: this.groupId,
+      group_id: this.localGroupId,
       user_id: user.id   
     };
 
