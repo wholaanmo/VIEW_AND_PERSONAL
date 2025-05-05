@@ -85,12 +85,6 @@
         Members ({{ members?.length || 0 }})
         </button>
         <button 
-          @click="activeTab = 'summary'" 
-          :class="{ active: activeTab === 'summary' }"
-        >
-          Summary
-        </button>
-        <button 
           v-if="isAdmin"
           @click="activeTab = 'settings'" 
           :class="{ active: activeTab === 'settings' }"
@@ -186,64 +180,6 @@
           </div>
         </div>
 
-        <!-- Summary Tab -->
-        <div v-if="activeTab === 'summary'" class="summary-tab">
-          <div class="summary-header">
-            <h3>Summary for {{ currentMonthYear }}</h3>
-            <div v-if="summaryLoading" class="loading-message">
-             Loading summary data...
-            </div>
-            <div v-else class="total-expenses">
-              Total Expenses: ₱{{ (summary?.total || 0).toFixed(2) }}
-            </div>
-          </div>
-
-          <div v-if="summaryLoading" class="loading-summary">
-          <div class="spinner small"></div>
-          </div>
-
-          <div v-else-if="summaryError" class="error-message">
-          {{ summaryError }}
-          </div>
-          
-          <div v-else class="summary-grid">
-            <div class="summary-card">
-              <h4>By Member</h4>
-              <div v-if="!summary.byMember || summary.byMember.length === 0">
-                <p>No member data available</p>
-              </div>
-
-              <div v-else class="member-summary" v-for="member in summary?.byMember || []" :key="member.user_id">
-                <span class="member-name">{{ member.name }}</span>
-                <span class="member-amount">₱{{ member.total.toFixed(2) }}</span>
-                <div class="progress-bar">
-                  <div 
-                    class="progress-fill" 
-                    :style="{ width: getPercentage(member.total, summary.total) + '%' }">
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div class="summary-card">
-              <h4>By Category</h4>
-              <div v-if="!summary.byCategory || summary.byCategory.length === 0">
-               <p>No category data available</p>
-              </div>
-              <div v-else class="category-summary" v-for="cat in summary?.byCategory || []" :key="cat.expense_type">
-                <span class="category-name">{{ cat.expense_type }}</span>
-                <span class="category-amount">₱{{ cat.total.toFixed(2) }}</span>
-                <div class="progress-bar">
-                  <div 
-                    class="progress-fill" 
-                    :style="{ width: getPercentage(cat.total, summary.total) + '%' }"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Settings Tab (Admin Only) -->
         <div v-if="activeTab === 'settings' && isAdmin" class="settings-tab">
           <div class="settings-section">
@@ -278,13 +214,27 @@
         <div class="modal-body">
           <form @submit.prevent="submitExpense">
             <div class="form-group">
-              <label>Item Name</label>
-              <input v-model="newExpense.item_name" type="text" required>
-            </div>
-            <div class="form-group">
-              <label>Amount</label>
-              <input v-model="newExpense.item_price" type="number" step="0.01" min="0" required>
-            </div>
+  <label>Item Name</label>
+  <input 
+    v-model="newExpense.item_name" 
+    type="text" 
+    required
+    minlength="2"
+    maxlength="255"
+  >
+  <small v-if="!newExpense.item_name" class="error">Item name is required</small>
+</div>
+<div class="form-group">
+  <label>Amount</label>
+  <input 
+    v-model="newExpense.item_price" 
+    type="number" 
+    step="0.01" 
+    min="0" 
+    required
+  >
+  <small v-if="!newExpense.item_price" class="error">Amount is required</small>
+</div>
             <div class="form-group">
               <label>Category</label>
               <select v-model="newExpense.expense_type" required>
@@ -402,9 +352,7 @@ export default {
       // Invite member
       inviteEmail: '',
       inviteError: '',
-      inviteSuccess: '',
-      summaryLoading: false,
-      summaryError: null
+      inviteSuccess: ''
     };
   },
   computed: {
@@ -412,7 +360,6 @@ export default {
       currentGroup: state => state.currentGroup,
       members: state => state.members,
       expenses: state => state.expenses,
-      summary: state => state.summary,
       loading: state => state.loading,
       error: state => state.error,
       isAdmin: state => state.isAdmin
@@ -468,8 +415,6 @@ export default {
     await this.fetchGroupData();
     console.log('Loading expenses...');
     await this.loadExpenses();
-    console.log('Loading summary...');
-    await this.loadSummary();
     console.log('All data loaded successfully');
 
     await this.fetchUserGroups();
@@ -491,7 +436,6 @@ export default {
     ...mapActions('group', [
       'fetchGroup',
       'fetchExpenses',
-      'fetchSummary',
       'addExpense',
       'updateExpense',
       'deleteExpense',
@@ -569,8 +513,7 @@ export default {
       try {
         await Promise.all([
           this.fetchGroupData(),
-          this.loadExpenses(),
-          this.loadSummary()
+          this.loadExpenses()
         ]);
         
         // Verify access after loading
@@ -632,38 +575,6 @@ export default {
     await this.fetchExpenses({ groupId: this.groupId, monthYear });
   },
     
-  async loadSummary() {
-    this.summaryLoading = true;
-    this.summaryError = null;
-
-    try {
-      const monthYear = this.formatMonthYear(this.currentMonthYear);
-    if (!monthYear || !/^\d{4}-\d{2}$/.test(monthYear)) {
-      throw new Error('Invalid month format');
-    }
-    
-    await this.fetchSummary({ 
-      groupId: this.groupId, 
-      monthYear 
-    });
-  } catch (err) {
-    this.summaryError = err.response?.data?.message || err.message || 'Failed to load summary';
-    console.error('Failed to load summary:', {
-      error: err,
-      response: err.response?.data
-    });
-
-    this.$notify({
-      title: 'Error',
-      message: this.summaryError,
-      type: 'error',
-      duration: 5000
-    });
-  } finally {
-    this.summaryLoading = false;
-  }
-},
-    
     formatDate(dateString) {
       if (!dateString) return '';
       const date = new Date(dateString);
@@ -686,14 +597,12 @@ export default {
       date.setMonth(date.getMonth() - 1);
       this.currentMonthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
       this.loadExpenses();  
-      this.loadSummary(); 
     },
     
     nextMonth() {
       const date = new Date(this.currentMonthYear);
       date.setMonth(date.getMonth() + 1);
       this.currentMonthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
-      this.loadExpenses(); 
       this.loadExpenses(); 
     },
     
@@ -707,24 +616,41 @@ export default {
     },
     
     async submitExpense() {
-      try {
-        await this.addExpense(this.newExpense);
-        this.$notify({
-          title: 'Success',
-          message: 'Expense added successfully',
-          type: 'success'
-        });
-        this.closeModal();
-        this.resetNewExpense();
-      } catch (err) {
-        console.error('Error adding expense:', err);
-        this.$notify({
-          title: 'Error',
-          message: err.response?.data?.message || 'Failed to add expense',
-          type: 'error'
-        });
-      }
-    },
+  try {
+    const user = JSON.parse(localStorage.getItem('user'));
+
+    const expenseData = {
+      item_name: this.newExpense.item_name,
+      item_price: parseFloat(this.newExpense.item_price),
+      expense_type: this.newExpense.expense_type,
+      group_id: this.groupId,
+      user_id: user.id   
+    };
+
+    console.log('Submitting expense:', expenseData);
+
+    await this.addExpense(expenseData);
+    
+    this.$notify({
+      title: 'Success',
+      message: 'Expense added successfully',
+      type: 'success'
+    });
+    
+    // Refresh expenses list
+    await this.loadExpenses();
+    
+    this.closeModal();
+    this.resetNewExpense();
+  } catch (err) {
+    console.error('Error adding expense:', err);
+    this.$notify({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to add expense',
+      type: 'error'
+    });
+  }
+},
     
     editExpense(expense) {
       this.editingExpense = { ...expense };
@@ -868,11 +794,6 @@ export default {
       return this.isAdmin || expense.user_id === userId;
     },
     
-    getPercentage(value, total) {
-      if (total === 0) return 0;
-      return Math.round((value / total) * 100);
-    },
-    
     closeModal() {
       this.showAddExpenseModal = false;
       this.showEditExpenseModal = false;
@@ -880,13 +801,13 @@ export default {
     },
     
     resetNewExpense() {
-      this.newExpense = {
-        item_name: '',
-        item_price: 0,
-        expense_type: 'Food',
-        group_id: this.groupId
-      };
-    },
+  this.newExpense = {
+    item_name: '',
+    item_price: 0,
+    expense_type: 'Food',
+    group_id: this.groupId
+  };
+},
 
  beforeRouteEnter(to, from, next) {
     if (!to.params.groupId) {
