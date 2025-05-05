@@ -1,21 +1,28 @@
 import axios from 'axios';
 
+function getDefaultState() {
+  return {
+    currentGroup: {
+      group_name: '',
+      group_code: '',
+      created_at: null,
+      created_by: null
+    },
+    members: [],
+    expenses: [],
+    loading: false,
+    error: null,
+    isAdmin: false
+  };
+}
+
 export default {
     namespaced: true,
-    state: {
-      currentGroup: {
-        group_name: '',
-        group_code: '',
-        created_at: null,
-        created_by: null
-      },
-      members: [],  // Add this
-      expenses: [], // Add this
-      loading: false,
-      error: null,
-      isAdmin: false
-    },
+    state: getDefaultState(),
     mutations: {
+      RESET_STATE(state) {
+        Object.assign(state, getDefaultState());
+      },
       SET_GROUP(state, group) {
         state.currentGroup = group;
       },
