@@ -325,9 +325,9 @@ export default {
   },
   data() {
     return {
+      localGroupId: this.groupId,
       showGroupList: false,
       userGroups: [],
-      groupId: this.$route.params.groupId,
       activeTab: 'expenses',
       currentMonthYear: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
       
@@ -341,7 +341,6 @@ export default {
         item_name: '',
         item_price: 0,
         expense_type: 'Food',
-        group_id: this.$route.params.groupId
       },
       
       editingExpense: {},
@@ -377,12 +376,12 @@ export default {
   },
 
   watch: {
-    '$route.params.groupId': {
+    'groupId': {
       immediate: true,
       handler(newGroupId) {
-        if (newGroupId && newGroupId !== this.groupId) {
-          this.groupId = newGroupId;
-          this.initializeGroupData();
+        if (newGroupId && newGroupId !== this.localGroupId) {
+        this.localGroupId = newGroupId;
+        this.initializeGroupData();
         }
       }
     }
@@ -399,10 +398,8 @@ export default {
     return;
   }
 
-  this.groupId = this.$route.params.groupId;
-
   console.log('User authenticated, checking groupId');
-    if (!this.groupId) {
+  if (!this.localGroupId) {
       console.error('Missing groupId parameter');
       this.$router.push('/GC');
       return;
@@ -504,8 +501,7 @@ export default {
         return;
       }
 
-      const groupId = this.groupId || this.$route.params.groupId;
-  if (!groupId) {
+      if (!this.localGroupId) {
     this.$router.push('/GC');
     return;
   }
@@ -534,15 +530,14 @@ export default {
     return;
   }
 
-  const groupId = this.groupId || this.$route.params.groupId;
-  if (!groupId) {
+  if (!this.localGroupId) {
     this.$router.push('/GC');
     return;
   }
 
   try {
-    console.log('Fetching group data for groupId:', this.groupId);
-    await this.fetchGroup(this.groupId);
+    console.log('Fetching group data for groupId:', this.localGroupId);
+    await this.fetchGroup(this.localGroupId);
     console.log('Group data fetched successfully');
     
     if (!this.currentGroup?.id) {
@@ -572,7 +567,7 @@ export default {
     
     async loadExpenses() {
     const monthYear = this.formatMonthYear(this.currentMonthYear);
-    await this.fetchExpenses({ groupId: this.groupId, monthYear });
+    await this.fetchExpenses({ groupId: this.localGroupId, monthYear });
   },
     
     formatDate(dateString) {
@@ -710,7 +705,10 @@ export default {
       }
       
       try {
-        await this.sendInvite({ groupId: this.groupId, email: this.inviteEmail });
+        await this.sendInvite({ 
+      groupId: this.localGroupId,  
+      email: this.inviteEmail 
+    })
         this.inviteSuccess = 'Invitation sent successfully!';
         this.inviteEmail = '';
         setTimeout(() => this.inviteSuccess = '', 3000);
@@ -725,7 +723,10 @@ export default {
       this.confirmationMessage = `Are you sure you want to remove ${member.username} from the group?`;
       this.confirmAction = async () => {
         try {
-          await this.removeMember({ groupId: this.groupId, memberId: member.id });
+          await this.removeMember({ 
+        groupId: this.localGroupId, 
+        memberId: member.id 
+      });
           this.$notify({
             title: 'Success',
             message: 'Member removed successfully',
@@ -747,7 +748,7 @@ export default {
     async updateGroupName() {
       try {
         await this.updateGroupName({ 
-          groupId: this.groupId, 
+          groupId: this.localGroupId,
           name: this.currentGroup.group_name 
         });
         this.$notify({
@@ -770,7 +771,7 @@ export default {
       this.confirmationMessage = 'Are you sure you want to delete this group permanently? This action cannot be undone.';
       this.confirmAction = async () => {
         try {
-          await this.deleteGroup(this.groupId);
+          await this.deleteGroup(this.localGroupId);
           this.$notify({
             title: 'Success',
             message: 'Group deleted successfully',
@@ -805,7 +806,7 @@ export default {
     item_name: '',
     item_price: 0,
     expense_type: 'Food',
-    group_id: this.groupId
+    group_id: this.localGroupId
   };
 },
 
@@ -827,7 +828,7 @@ export default {
       return;
     }
     
-    this.groupId = to.params.groupId;
+    this.localGroupId = to.params.groupId; 
     this.initializeGroupData()
       .finally(() => next());
   }
