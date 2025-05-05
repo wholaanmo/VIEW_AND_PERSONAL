@@ -170,7 +170,7 @@ export default {
   },
 
   computed: {
-    ...mapGetters(['getViewExpenses', 'getPersonalBudgets', 'getCurrentBudget', 'getViewPageMonthYear']),
+    ...mapGetters(['getViewExpenses', 'getPersonalBudgets', 'getViewPageMonthYear']),
 
    selectedMonthYear: {
     get() {
@@ -271,8 +271,9 @@ export default {
     },
 
     currentBudget() {
-      return this.getCurrentBudget || { budget_amount: 0 };
-    },
+  const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
+  return this.$store.getters.getCurrentBudget(monthYear);
+},
   
     remainingBudget() {
       if (!this.currentBudget) return 0;
