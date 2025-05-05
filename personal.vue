@@ -163,7 +163,7 @@
   <td>{{ formatDate(expense?.expense_date) }}</td>
   <td class="actions">
     <button @click="editExpense(expense)" class="edit-btn">Edit</button>
-    <button @click="deleteExpense(expense?.id)" class="delete-btn">Delete</button>
+    <button @click="deleteExpenseHandler(expense?.id)" class="delete-btn">Delete</button>
                 </td>
                 </tr>
             </tbody>
@@ -245,15 +245,11 @@
   }
 },
 
-  currentBudget() {
-    const budget = this.$store.getters.getCurrentBudget;
-  return budget || { 
-    id: null, 
-    budget_amount: 0, 
-    month_year: this.currentMonthYear 
-  };
+currentBudget() {
+  const currentMonthYear = this.getCurrentMonthYear();
+  return this.$store.getters.getCurrentBudget(currentMonthYear);
 },
-     
+
      safeSelectedMonthYear() {
       return this.selectedMonthYear || this.currentMonthYear;
     },
@@ -295,10 +291,6 @@
     await this.setSelectedMonthYear(currentMonthYear);
 
     this.checkMonthChange();
-
-  //  if (!this.$store.state.selectedMonthYear) {
-  //    await this.setSelectedMonthYear(this.currentMonthYear);
-   // }
 
     await Promise.all([
       this.fetchExchangeRate(),
@@ -809,8 +801,6 @@ editExpense(expense) {
 },
  
      async deleteExpenseHandler(id) {
-       if (!confirm('Are you sure you want to delete this expense?')) return;
- 
        const result = await this.deleteExpense(id);
        if (result.success) {
          this.showExpenseSuccessMessage('Expense deleted successfully!');
@@ -1049,7 +1039,8 @@ editExpense(expense) {
 
 
 .add-budget-btn:hover, .edit-budget-btn:hover {
-  background: #12301f;
+  background: #dcdcdc;
+  color: #333333;
   transform: translateY(-2px);
 }
 
@@ -1137,7 +1128,8 @@ editExpense(expense) {
 }
 
 .budget-btn:hover {
-  background-color: #12301f;
+  background: #dcdcdc; 
+  color: #333333;
   transform: translateY(-2px);
 }
 
@@ -1147,6 +1139,7 @@ editExpense(expense) {
 
 .cancel-btn:hover {
   background-color: #4b5256;
+  color: white;
 }
 
 .budget-success-message {
@@ -1204,10 +1197,14 @@ editExpense(expense) {
   padding: 20px;
   border-radius: 15px;
   border: 2px solid #85cf9d;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
   margin-top: 30px;
+  transition: box-shadow 0.3s ease;
 }
  
+.expenses-container:hover {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
 
  .expense-form {
   text-align: center;
@@ -1222,10 +1219,11 @@ editExpense(expense) {
 .expenses-section h3 {
   margin-top: 10px;
   margin-bottom: 25px; 
-  color: #333;
+  color: #2e2e2e;
   font-size: 1.5rem; 
   padding-bottom: 10px;
-  border-bottom: 2px solid #eee; 
+  border-bottom: 2px solid #e1e1e1; 
+  font-weight: 600;
 } 
 
 .expenses-table {
@@ -1243,30 +1241,37 @@ table {
 th, td {
   padding: 6px 20px; 
   text-align: center;
-  border-bottom: 2px solid #ddd;
-  color: #333;
+  border-bottom: 2px solid #e0e0e0;
+  color: #444;
+  font-size: 0.95rem;
 } 
 
 th {
-  background-color: #f8f9fa;
-  font-weight: 600;
+  background-color: #ecfdf5;
+  font-weight: 700;
   font-size: 1rem; 
   padding: 12px 20px; 
+  color: rgb(46, 41, 41);
 } 
 
 tr {
-  background-color: white;
+  background-color: #ecfdf5;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
   margin-bottom: 15px; 
+  transition: all 0.2s ease;
 }
 
 tr:hover {
-  background-color: #f5f5f5;
+  background-color: #f9f9f9;
   transform: translateY(-2px); 
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+  box-shadow: 0 6px 12px rgba(0,0,0,0.08); 
   transition: all 0.2s ease; 
 } 
 
+td, th {
+  vertical-align: middle;
+  white-space: nowrap;
+}
 .actions {
   display: flex;
   gap: 10px;
@@ -1276,73 +1281,37 @@ tr:hover {
 .edit-btn, .delete-btn {
   padding: 8px 15px;
   font-size: 0.9rem;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   border: none;
-  color: white;
-  font-weight: 500;
+  color: #fff;
+  font-weight: 600;
   position: relative;
   overflow: hidden;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
 .edit-btn {
-  background-color: #2196F3;
+  background-color: #059669;
 }
-
 
 .delete-btn {
-  background-color: #f44336;
+  background-color: #b33c3c;
 }
 
-
 .edit-btn:hover {
-  background-color: #1976D2;
+  background-color: #10b981;
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
-  
-
-  &::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 5px;
-    height: 5px;
-    background: rgba(255, 255, 255, 0.5);
-    opacity: 0;
-    border-radius: 100%;
-    transform: scale(1, 1) translate(-50%);
-    transform-origin: 50% 50%;
-  }
-  
-  &:hover::after {
-    animation: ripple 0.6s ease-out;
-  }
+  box-shadow: 0 4px 8px rgba(52, 211, 153, 0.3);
 }
 
 .delete-btn:hover {
-  background-color: #d32f2f;
+  background-color: #ef4444; 
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(244, 67, 54, 0.3);
-  
-
-  animation: pulse 0.5s ease-in-out;
+  box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+  animation: pulse 0.4s ease-in-out;
 }
-
-
-@keyframes ripple {
-  0% {
-    transform: scale(0, 0);
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(20, 20);
-    opacity: 0;
-  }
-}
-
 
 @keyframes pulse {
   0% {
@@ -1356,7 +1325,6 @@ tr:hover {
   }
 }
 
-
 .edit-btn:active, .delete-btn:active {
   transform: translateY(0);
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
@@ -1367,14 +1335,16 @@ tr:hover {
      font-weight: bold;
      color: #333;
      padding: 20px;
-     background-color: white;
+     background-color: #d0ebdd;
      box-sizing: border-box;
-     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
      text-align: center;
      max-width: 1300px;
      width: 100%;
      position: relative; 
      bottom: 0;   
+     border-radius: 12px;
+     margin-top: -20px;
 }
 
  
@@ -1419,8 +1389,8 @@ tr:hover {
 }
 
 .btn:hover {
-    background-color: #12301f; /* Change to any color you want */
-    color: white; /* Text color on hover */
+    background-color: #dcdcdc; /* Change to any color you want */
+    color: #333333; /* Text color on hover */
     transform: translateY(-2px);
 }
 
