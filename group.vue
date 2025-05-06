@@ -153,7 +153,7 @@
                 <span :class="['role-badge', member.role]">{{ member.role }}</span>
                 <button 
                   v-if="isAdmin && member.role !== 'admin'"
-                  @click="removeMember(member)"
+                  @click="confirmRemoveMember(member)"
                   class="remove-button"
                 >
                   Remove
@@ -733,15 +733,22 @@ export default {
       this.confirmationMessage = `Are you sure you want to remove ${member.username} from the group?`;
       this.confirmAction = async () => {
         try {
+          console.log('Removing member with:', {
+        groupId: this.localGroupId,  // Verify this exists
+        memberId: member.id          // Verify this exists
+      });
+
           await this.removeMember({ 
         groupId: this.localGroupId, 
         memberId: member.id 
       });
+
           this.$notify({
             title: 'Success',
             message: 'Member removed successfully',
             type: 'success'
           });
+
           this.closeModal();
         } catch (err) {
           console.error('Error removing member:', err);
