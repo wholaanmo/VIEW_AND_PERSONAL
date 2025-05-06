@@ -30,7 +30,7 @@ export default {
         state.members = members;
       },
       SET_EXPENSES(state, expenses) {
-        state.expenses = expenses;
+        state.expenses = Array.isArray(expenses) ? expenses : [];
       },
       SET_LOADING(state, loading) {
         state.loading = loading;
@@ -42,8 +42,11 @@ export default {
         state.isAdmin = isAdmin;
       },
       ADD_EXPENSE(state, expense) {
-        if (!state.expenses) {
-          state.expenses = []; // Initialize if undefined
+        console.log('Current expenses:', state.expenses);
+        console.log('Type of expenses:', typeof state.expenses);
+        if (!Array.isArray(state.expenses)) {
+          console.warn('Expenses was not an array, resetting it');
+          state.expenses = [];
         }
         state.expenses.push(expense);
       },
@@ -137,17 +140,28 @@ export default {
         commit('SET_ERROR', null);
         
         try {
-          const res = await axios.get(`/api/grp_expenses/${groupId}`, {
-            params: { monthYear }
+          const res = await axios.get(`/api/grp_expenses/${groupId}/expenses`, {
+            params: { monthYear },
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+            }
           });
-          commit('SET_EXPENSES', res.data.data);
-        } catch (err) {
-          commit('SET_ERROR', err.response?.data?.message || 'Failed to load expenses');
-          throw err;
-        } finally {
-          commit('SET_LOADING', false);
-        }
-      },
+
+          console.log('API response data:', res.data);
+
+          const expensesData = res.data.success ? (res.data.data || []) : [];
+          commit('SET_EXPENSES', expensesData);
+
+          if (!res.data.success) {
+            throw new Error(res.data.message || 'Failed to fetch expenses');
+          }
+  } catch (err) {
+    commit('SET_ERROR', err.response?.data?.message || 'Failed to load expenses');
+    throw err;
+  } finally {
+    commit('SET_LOADING', false);
+  }
+},
       
       async addExpense({ commit }, expenseData) {
         try {
@@ -181,12 +195,23 @@ export default {
       async updateExpense({ commit }, expenseData) {
         try {
           const res = await axios.put(
-            `/api/grp_expenses/edit/${expenseData.id}`,
-            expenseData
+            `/api/grp_expenses/${expenseData.group_id}/expenses/${expenseData.id}`,
+            expenseData,
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+              }
+            }
           );
+          
+          if (!res.data.success) {
+            throw new Error(res.data.message || 'Failed to update expense');
+          }
+          
           commit('UPDATE_EXPENSE', res.data.data);
           return res.data;
         } catch (err) {
+          console.error('Update expense error:', err);
           throw err;
         }
       },
