@@ -268,8 +268,26 @@ export default {
       
       async deleteGroup({ commit }, groupId) {
         try {
-          await axios.delete(`/api/grp_expenses/delete-group/${groupId}`);
+          const response = await axios.delete(
+            `/api/grp_expenses/delete-group/${groupId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+              }
+            }
+          );
+      
+          if (!response.data.success) {
+            throw new Error(response.data.message || 'Failed to delete group');
+          }
+      
+          commit('RESET_STATE');
+          return true;
         } catch (err) {
+          console.error('Delete group error:', {
+            error: err,
+            response: err.response?.data
+          });
           throw err;
         }
       }
