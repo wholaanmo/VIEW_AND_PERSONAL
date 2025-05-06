@@ -211,10 +211,18 @@
           <div class="danger-zone">
             <h3>Danger Zone</h3>
             <div class="danger-item">
-              <p>Delete this group permanently</p>
-              <button @click="confirmDeleteGroup" class="delete-button">
-                Delete Group
-              </button>
+              <p>Delete this group permanently  (including all expenses and members) </p>
+              <button 
+      @click="confirmDeleteGroup" 
+      class="delete-button"
+      :disabled="deletingGroup"
+    >
+      <span v-if="deletingGroup">
+        <i class="fas fa-spinner fa-spin"></i> Deleting...
+      </span>
+      <span v-else>Delete Group</span>
+    </button>
+    <p v-if="deleteGroupError" class="error-message">{{ deleteGroupError }}</p>
             </div>
           </div>
         </div>
@@ -352,6 +360,8 @@ export default {
       updatingName: false,
       nameError: '',
       originalName: '',
+      deletingGroup: false,
+      deleteGroupError: '',
       // Modals
       showAddExpenseModal: false,
       showEditExpenseModal: false,
@@ -830,6 +840,7 @@ export default {
             message: 'Group deleted successfully',
             type: 'success'
           });
+          this.closeModal();
           this.$router.push('/GC');
         } catch (err) {
           console.error('Error deleting group:', err);
