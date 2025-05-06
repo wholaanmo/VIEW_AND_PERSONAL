@@ -16,39 +16,15 @@ const {
 
 router.use(checkToken);
 
-router.put(
-  '/update-group/:groupId',
-  groupAuth('admin'), 
-  updateGroupName
-);
-
-router.delete(
-  '/:groupId/members/:memberId', 
-  groupAuth('admin'),
-  removeMember
-);
+router.put('/update-group/:groupId', groupAuth('admin'), updateGroupName);
+router.delete('/:groupId/members/:memberId', groupAuth('admin'), removeMember);
 
 router.post('/:groupId/expenses', groupAuth('member'), addGroupExpense);
 router.get('/:groupId/expenses', groupAuth('member'), getGroupExpenses);
 
-router.put(
-  '/:groupId/expenses/:expenseId', 
-  groupAuth('member'), 
-  verifyExpenseOwnership,
-  editGroupExpense
-);
+router.put('/:groupId/expenses/:expenseId', groupAuth('member'), verifyExpenseOwnership, editGroupExpense);
 
-router.delete(
-  '/:groupId/expenses/:expenseId', 
-  groupAuth('member'), 
-  verifyExpenseOwnership,
-  deleteGroupExpense
-);
-
-router.delete(
-  '/delete-group/:groupId', 
-  groupAuth('admin'),
-  deleteGroup
-);
+router.delete('/:groupId/expenses/:expenseId', groupAuth('member'), verifyExpenseOwnership, deleteGroupExpense);
+router.delete('/delete-group/:groupId', groupAuth('admin'), deleteGroup);
 
 module.exports = router;
