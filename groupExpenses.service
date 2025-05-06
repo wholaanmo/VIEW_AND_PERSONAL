@@ -194,6 +194,41 @@ isGroupAdmin: async (userId, groupId) => {
     } finally {
       if (connection) connection.release();
     }
+  },
+
+  deleteGroup: async (groupId) => {
+    let connection;
+    try {
+      connection = await pool.getConnection();
+      await connection.beginTransaction();
+  
+      // Delete expenses first
+      await connection.query(
+        'DELETE FROM group_expenses WHERE group_id = ?',
+        [groupId]
+      );
+  
+      // Then delete members
+      await connection.query(
+        'DELETE FROM group_members WHERE group_id = ?',
+        [groupId]
+      );
+  
+      // Finally delete the group
+      const [result] = await connection.query(
+        'DELETE FROM groups WHERE id = ?',
+        [groupId]
+      );
+  
+      await connection.commit();
+      return result.affectedRows > 0;
+    } catch (err) {
+      if (connection) await connection.rollback();
+      console.error('Delete group error:', err);
+      throw err;
+    } finally {
+      if (connection) connection.release();
+    }
   }
 };
 
