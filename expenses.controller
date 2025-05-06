@@ -1,4 +1,5 @@
 const expenseService = require('../expenses/expenses.service');
+const pool = require('../../config/database');
 
 module.exports = {
   addExpense: async (req, res) => {
@@ -98,6 +99,13 @@ module.exports = {
 
   getExpenses: async (req, res) => {
     try {
+      if (!req.user || !req.user.userId) {
+        return res.status(401).json({
+          success: 0,
+          message: "Unauthorized: User not authenticated"
+        });
+      }
+
       const userId = req.user.userId;
       const monthYear = req.query.monthYear || 
       `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
@@ -109,17 +117,28 @@ module.exports = {
         });
       }
       
-      const results = await expenseService.getExpensesByUserAndMonth(userId, monthYear);
+      const [year, month] = monthYear.split('-').map(Number);
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+
+      const [expenses] = await pool.query(
+        `SELECT * FROM expenses 
+         WHERE userId = ? 
+         AND expense_date BETWEEN ? AND ?
+         ORDER BY expense_date DESC`,
+        [userId, startDate, endDate]
+      );
 
       return res.json({
         success: 1,
-        data: results
+        data: expenses
       });
     } catch (err) {
       console.error("Get expenses error:", err);
       return res.status(500).json({
         success: 0,
-        message: "Database error"
+        message: "Failed to get expenses",
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
       });
     }
   }
