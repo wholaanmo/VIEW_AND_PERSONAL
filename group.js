@@ -98,7 +98,7 @@ export default {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
         },
-        timeout: 10000 // 10 seconds timeout
+        timeout: 30000
       }),
       axios.get(`/api/grp_expenses/${groupId}/members`, {
         headers: {
@@ -214,22 +214,54 @@ export default {
       
       async removeMember({ commit }, { groupId, memberId }) {
         try {
-          await axios.delete(`/api/grp_expenses/members/${groupId}/${memberId}`);
+          console.log('Vuex action receiving:', { groupId, memberId });
+
+          if (!groupId || !memberId) {
+            throw new Error('Missing groupId or memberId');
+          }
+          
+          const response = await axios.delete(
+            `/api/grp_expenses/${groupId}/members/${memberId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+              }
+            }
+          );
+
           commit('REMOVE_MEMBER', memberId);
+          return response.data;
         } catch (err) {
+          console.error('Error removing member:', {
+          error: err,
+          response: err.response?.data
+        });
           throw err;
         }
       },
       
-      async updateGroupName({ commit }, { groupId, name }) {
+      async updateGroupName({ commit, state }, { groupId, name }) {
         try {
           const res = await axios.put(
             `/api/grp_expenses/update-group/${groupId}`,
-            { name }
+            { name },
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+              }
+            }
           );
-          commit('SET_GROUP', { ...state.currentGroup, group_name: name });
-          return res.data;
+          
+          if (res.data.success) {
+            commit('SET_GROUP', { 
+              ...state.currentGroup, 
+              group_name: name 
+            });
+            return true;
+          }
+          throw new Error(res.data.message || 'Update failed');
         } catch (err) {
+          console.error('Update group name error:', err);
           throw err;
         }
       },
