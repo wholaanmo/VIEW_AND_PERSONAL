@@ -205,7 +205,63 @@ exports.updateGroupName = async (req, res) => {
     res.status(500).json({ success: 0, message: err.message });
   }
 };
-// Middleware to verify expense ownership
+
+exports.deleteGroup = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const userId = req.user.userId;
+
+    // Check if user is an admin
+    const isAdmin = await groupService.isGroupAdmin(userId, groupId);
+    if (!isAdmin) {
+      return res.status(403).json({ 
+        success: 0, 
+        message: "Only admins can delete the group" 
+      });
+    }
+
+    // Start transaction
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // First delete all expenses for this group
+      await connection.query(
+        'DELETE FROM group_expenses WHERE group_id = ?',
+        [groupId]
+      );
+
+      // Then delete all members
+      await connection.query(
+        'DELETE FROM group_members WHERE group_id = ?',
+        [groupId]
+      );
+
+      // Finally delete the group itself
+      const [result] = await connection.query(
+        'DELETE FROM groups WHERE id = ?',
+        [groupId]
+      );
+
+      if (result.affectedRows === 0) {
+        await connection.rollback();
+        return res.status(404).json({ success: 0, message: "Group not found" });
+      }
+
+      await connection.commit();
+      res.json({ success: 1, message: "Group deleted successfully" });
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
+  } catch (err) {
+    console.error('Delete group error:', err);
+    res.status(500).json({ success: 0, message: err.message });
+  }
+};
+
 exports.verifyExpenseOwnership = async (req, res, next) => {
   try {
     const expenseId = req.params.expenseId || req.params.id;
@@ -241,4 +297,3 @@ exports.verifyExpenseOwnership = async (req, res, next) => {
     });
   }
 };
-
