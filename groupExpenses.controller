@@ -52,7 +52,7 @@ const pool = require('../../config/database');
   exports.editGroupExpense = async (req, res) => {
     try {
       const { item_price, expense_type, item_name } = req.body;
-      const expenseId = req.params.expenseId || req.params.id;
+      const { groupId, expenseId } = req.params;
       const userId = req.user.userId;
       const canEdit = await groupExpenseService.canUserEditExpense(userId, expenseId);
         if (!canEdit) {
@@ -64,6 +64,7 @@ const pool = require('../../config/database');
 
         const updatedExpense = await groupExpenseService.editGroupExpense({
             id: expenseId,
+            group_id: groupId,
             item_price,
             expense_type,
             item_name
@@ -105,31 +106,45 @@ exports.deleteGroupExpense = async (req, res) => {
   exports.getGroupExpenses = async (req, res) => {
     try {
       const groupId = req.params.groupId;
+      if (!groupId) {
+        return res.status(400).json({ success: 0, message: "Group ID is required" });
+      }
       const monthYear = req.query.monthYear || 
         `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
       
-      // Validate monthYear format
-      if (!/^\d{4}-\d{2}$/.test(monthYear)) {
-        return res.status(400).json({
-          success: 0,
-          message: "Invalid month format (use YYYY-MM)"
-        });
-      }
-
-      const expenses = await groupExpenseService.getGroupExpenses(groupId, monthYear);
-      
+      const [year, month] = monthYear.split('-');
+      const startDate = `${year}-${month}-01`;
+  
+      const [expenses] = await pool.query(
+        `SELECT 
+          ge.id,
+          ge.item_name,
+          ge.item_price,
+          ge.expense_type,
+          ge.expense_date,  
+          ge.user_id,
+          ge.group_id,
+          u.username as user_name
+        FROM group_expenses ge
+        JOIN users u ON ge.user_id = u.id
+        WHERE ge.group_id = ?
+        AND DATE(ge.expense_date) BETWEEN ? AND LAST_DAY(?)
+        ORDER BY ge.expense_date DESC`,
+        [groupId, startDate, startDate]
+      );
+  
       return res.json({
         success: 1,
-        data: expenses
+        data: expenses || []
       });
     } catch (err) {
       console.error("Get expenses error:", err);
       return res.status(500).json({
         success: 0,
-        message: "Failed to fetch expenses"
+        message: "Failed to get expenses"
       });
     }
-};
+  };
 
 exports.removeMember = async (req, res) => {
   try {
