@@ -1,0 +1,264 @@
+const groupService = require('../grp_expenses/group.service');
+const pool = require('../../config/database');
+
+module.exports = {
+  getUserGroups: async (req, res) => {
+    let connection;
+    try {
+      connection = await pool.getConnection();
+      const userId = req.user.userId;
+      
+      const [groups] = await pool.query(`
+        SELECT g.*, 
+          (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count
+        FROM groups g
+        JOIN group_members gm ON g.id = gm.group_id
+        WHERE gm.user_id = ?
+        ORDER BY g.created_at DESC
+      `, [userId]);
+  
+      return res.json({
+        success: 1,
+        data: groups
+      });
+    } catch (err) {
+      console.error("Get user groups error:", err);
+      return res.status(500).json({
+        success: 0,
+        message: "Failed to fetch user groups"
+      });
+    } finally {
+      if (connection) connection.release();
+    }
+  },
+
+  createGroup: async (req, res) => {
+    try {
+      console.log('Create group request received:', {
+        body: req.body,
+        user: req.user,
+        headers: req.headers
+      });
+      
+      console.log('Authenticated user:', req.user); // Debug log
+      
+      if (!req.user || !req.user.userId) {
+        console.error('No user in request');
+        return res.status(401).json({
+          success: 0,
+          message: "Unauthorized"
+        });
+      }
+
+      const userId = req.user.userId;
+      const { name } = req.body;
+
+      if (!name || name.length < 3) {
+        return res.status(400).json({
+          success: 0,
+          message: "Group name must be at least 3 characters"
+        });
+      }
+
+      console.log('Calling group service...');
+      const { groupCode, groupId } = await groupService.createGroup(userId, name);
+
+      console.log('Group created:', { groupCode, groupId });
+      return res.json({
+        success: 1,
+        message: "Group created successfully",
+        data: {
+          groupId,
+          groupCode
+        }
+      });
+    } catch (err) {
+      console.error("Create group error:", err);
+      return res.status(500).json({
+        success: 0,
+        message: err.message || "Failed to create group"
+      });
+    }
+  },
+  
+joinGroup: async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { groupCode } = req.body;
+
+    // Find group by code
+    const [groups] = await pool.query(
+      'SELECT id FROM groups WHERE group_code = ?',
+      [groupCode]
+    );
+    
+    if (groups.length === 0) {
+      return res.status(404).json({
+        success: 0,
+        message: "Group not found with this code"
+      });
+    }
+    
+    const groupId = groups[0].id;
+    
+    // Check if user is already a member
+    const [existingMembers] = await pool.query(
+      'SELECT id FROM group_members WHERE group_id = ? AND user_id = ?',
+      [groupId, userId]
+    );
+    
+    if (existingMembers.length > 0) {
+      return res.json({
+        success: 1,
+        message: "You're already a member of this group",
+        data: { groupId }
+      });
+    }
+    
+    // Add user as regular member
+    await pool.query(
+      'INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)',
+      [groupId, userId, 'member']
+    );
+    
+    return res.json({
+      success: 1,
+      message: "Successfully joined group",
+      data: { groupId }
+    });
+  } catch (err) {
+    console.error("Join group error:", err);
+    return res.status(500).json({
+      success: 0,
+      message: "Failed to join group"
+    });
+  }
+},
+
+  getGroupInfo: async (req, res) => {
+    let connection; //NEWWWWWWWW
+    try {
+      const { groupId } = req.params;
+      const connection = await pool.getConnection();
+      
+      const [group] = await connection.query(
+        'SELECT id, group_name, group_code, created_by, created_at FROM groups WHERE id = ?',
+        [groupId]
+      );
+      
+      if (group.length === 0) {
+        return res.status(404).json({ success: 0, message: 'Group not found' });
+      }
+      
+      res.json({ success: 1, data: group[0] });
+    } catch (err) {
+      res.status(500).json({ success: 0, message: err.message });
+    } finally {
+      if (connection) connection.release();
+    }
+  },
+
+  getMembers: async (req, res) => {
+    let connection;     //NEWWWWWWWWWWWWWW
+    try {
+      const { groupId } = req.params;
+      const connection = await pool.getConnection();
+      
+      const [members] = await connection.query(
+        `SELECT u.id, u.username, u.email, gm.role 
+         FROM group_members gm
+         JOIN users u ON gm.user_id = u.id
+         WHERE gm.group_id = ?`,
+        [groupId]
+      );
+      
+      res.json({ success: 1, data: members });
+    } catch (err) {
+      res.status(500).json({ success: 0, message: err.message });
+    } finally {
+      if (connection) connection.release();
+    }
+  },
+
+  deleteGroup: async (req, res) => {
+    let connection;     //NEWWWWWWWWWWWWWW
+try {
+      const { groupId } = req.params;
+      connection = await pool.getConnection();
+      
+      await connection.beginTransaction();
+      
+      // Delete members first (foreign key constraint)
+      await connection.query(
+        'DELETE FROM group_members WHERE group_id = ?',
+        [groupId]
+      );
+      
+      // Then delete the group
+      await connection.query(
+        'DELETE FROM groups WHERE id = ?',
+        [groupId]
+      );
+      
+      await connection.commit();
+      res.json({ success: 1, message: 'Group deleted successfully' });
+    } catch (err) {
+      if (connection) await connection.rollback();
+      res.status(500).json({ success: 0, message: err.message });
+    } finally {
+      if (connection) connection.release();
+    }
+  },
+
+  inviteMember: async (req, res) => {
+    let connection; 
+    try {
+      const { groupId } = req.params;
+      const { email } = req.body;
+      connection = await pool.getConnection();
+      
+      // In a real app, you would:
+      // 1. Look up user by email
+      // 2. Send invitation
+      // 3. Add to group_members if they accept
+      
+      // For now, we'll just return a success message
+      const [users] = await connection.query(
+        'SELECT id FROM users WHERE email = ?',
+        [email]
+      );
+      
+      if (users.length === 0) {
+        return res.status(404).json({ success: 0, message: 'User not found' });
+      }
+      
+      const userId = users[0].id;
+      
+      // Check if already a member
+      const [existing] = await connection.query(
+        'SELECT id FROM group_members WHERE group_id = ? AND user_id = ?',
+        [groupId, userId]
+      );
+      
+      if (existing.length > 0) {
+        return res.status(400).json({ success: 0, message: 'User already in group' });
+      }
+      
+      // Add as member
+      await connection.query(
+        'INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)',
+        [groupId, userId, 'member']
+      );
+      
+      res.json({ 
+        success: 1, 
+        message: 'User added to group successfully',
+        data: { groupId, userId }
+      });
+    } catch (err) {
+      res.status(500).json({ success: 0, message: err.message });
+    } finally {
+      if (connection) connection.release();
+    }
+  }
+};
