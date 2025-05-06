@@ -43,6 +43,12 @@
       </button>
     </div>
 
+    <div class="month-selector">
+    <button @click="prevMonth">&lt;</button>
+    <span>{{ formatMonthYear(currentMonthYear) }}</span>
+    <button @click="nextMonth">&gt;</button>
+    </div>
+
       <div v-if="!isAddingBudget && !isEditingBudget" class="budget-display">
             <div class="budget-info">
               <div class="budget-month-row"> <!--NEWWWWWWWWWWW-->
@@ -224,7 +230,6 @@
        isPredicting: false,
        showPredictionFeedback: false,
        predictionDebounce: null,
-       usdExchangeRate: 0.018045, // Default precise value
        exchangeRateError: null
      };
    },
@@ -232,6 +237,14 @@
    computed: {
     ...mapState(['addExpenses', 'personalBudgets', 'usdExchangeRate']),
   ...mapGetters(['getTotalAmount', 'getCurrentBudget', 'getAvailableMonths', 'getAddExpenseMonthYear']),
+  
+  safeExchangeRate() {
+    return this.usdExchangeRate || 0.018045;
+  },
+
+  currentBudgetForMonth() {
+    return this.$store.getters.getCurrentBudget(this.currentMonthYear);
+  },
 
   shouldShowExpenses() {
     const now = new Date();
@@ -240,9 +253,19 @@
   },
 
   filteredExpenses() {
-    if (!this.shouldShowExpenses) return []; // Hide if not current month
-    return this.addExpenses;; // Show if current month
-  },
+  // Filter expenses for the currently selected month
+  return this.addExpenses.filter(expense => {
+    if (!expense.expense_date) return false;
+    
+    const expenseDate = new Date(expense.expense_date);
+    const selectedDate = new Date(this.currentMonthYear);
+    
+    return (
+      expenseDate.getFullYear() === selectedDate.getFullYear() &&
+      expenseDate.getMonth() === selectedDate.getMonth()
+    );
+  });
+},
 
   selectedMonthYear: {
   get() {
@@ -370,6 +393,30 @@ currentBudget() {
        'setSelectedMonthYear' ,
        'fetchAddExpenses' 
      ]),
+
+     prevMonth() {
+    const date = new Date(this.currentMonthYear);
+    date.setMonth(date.getMonth() - 1);
+    this.changeMonth(date);
+  },
+
+  nextMonth() {
+    const date = new Date(this.currentMonthYear);
+    date.setMonth(date.getMonth() + 1);
+    this.changeMonth(date);
+  },
+
+  async changeMonth(date) {
+    const newMonthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    this.currentMonthYear = newMonthYear;
+    await this.$store.dispatch('setSelectedMonthYear', newMonthYear);
+    
+    await Promise.all([
+      this.$store.dispatch('fetchAddExpenses'),
+      this.$store.dispatch('fetchPersonalBudgets')
+    ]);
+  },
+
     checkMonthChange() {
     const lastAccessedMonth = localStorage.getItem('lastAccessedMonth');
     const currentMonth = new Date().getMonth();
@@ -513,10 +560,11 @@ shouldSuggestAlternative(itemName) {
   },
 
   checkBudgetStatus(forceShow = false) {
-    if (!this.currentBudget?.budget_amount) {
-      this.showBudgetExceededAlert = false;
-      return;
-    }
+    const budget = this.currentBudgetForMonth;
+    if (!budget?.budget_amount) {
+    this.showBudgetExceededAlert = false;
+    return;
+  }
 
     const currentMonthYear = this.getCurrentMonthYear();
 
@@ -628,7 +676,7 @@ shouldSuggestAlternative(itemName) {
      async updateBudget() {
        try {
         if (!this.currentBudget.id) {
-      throw new Error('No budget found for current month');
+          throw new Error('No budget found for current month');
     }
  
          if (!this.budgetAmount) {
@@ -662,10 +710,10 @@ shouldSuggestAlternative(itemName) {
      },
      
      convertPhpToUsd(phpAmount) {
-      const rate = this.usdExchangeRate || 0.018045;
-  const usdAmount = parseFloat(phpAmount) * rate;
-  return parseFloat(usdAmount.toFixed(6)); 
-},
+      const rate = this.safeExchangeRate;
+      const usdAmount = parseFloat(phpAmount) * rate;
+      return parseFloat(usdAmount.toFixed(6)); 
+    },
      
      formatUsd(value) {
        return '$' + parseFloat(value).toFixed(2);
@@ -705,31 +753,24 @@ shouldSuggestAlternative(itemName) {
   try {
     if (!this.validateExpenseForm()) return;
 
-    if (!this.currentBudget?.id) {
+    const selectedDate = new Date(this.currentMonthYear);
+    const expenseDate = new Date(
+      selectedDate.getFullYear(),
+      selectedDate.getMonth(),
+      new Date().getDate() // Use current day
+    );
+
+    if (!this.currentBudgetForMonth?.id) {
       this.showExpenseSuccessMessage('No valid budget selected');
       return;
-    }
-
-    const currentDate = new Date();
-    const currentMonthYear = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-
-    let budget = this.personalBudgets.find(b => b.month_year === currentMonthYear);
-    
-    if (!budget) {
-      // Create a default budget if none exists
-      budget = {
-        id: null,
-        month_year: currentMonthYear,
-        budget_amount: 0
-      };
     }
 
     const expenseData = {
       item_price: Number(this.itemPrice), 
       expense_type: this.expenseType === 'Other' ? this.customExpenseType : this.expenseType,
       item_name: this.itemName,
-      personal_budget_id: budget.id,
-      expense_date: currentDate.toISOString()
+      personal_budget_id: this.currentBudgetForMonth.id,
+      expense_date: expenseDate.toISOString()
     };
     
     let result;
@@ -744,15 +785,15 @@ shouldSuggestAlternative(itemName) {
 
     if (result.success) {
       try {
-            await this.$axios.post('/api/predictions/learn', {
-              item_name: this.itemName,
-              expense_type: this.expenseType 
-            }, {
-              headers: { 
-                Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
-              }
-            });
-          } catch (learnError) {
+        await this.$axios.post('/api/predictions/learn', {
+          item_name: this.itemName,
+          expense_type: this.expenseType 
+        }, {
+          headers: { 
+            Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
+          }
+        });
+      } catch (learnError) {
         console.error('Failed to send learning data:', learnError);
       }
     
@@ -767,9 +808,9 @@ shouldSuggestAlternative(itemName) {
       
       // Force a check after everything is updated
       this.$nextTick(() => {
-      console.log('Checking budget after expense update');
-      this.checkBudgetStatus(true); // Force re-check and re-alert
-    });
+        console.log('Checking budget after expense update');
+        this.checkBudgetStatus(true); // Force re-check and re-alert
+      });
     } else {
       this.showExpenseSuccessMessage(result.message || 'Operation failed');
     }
@@ -778,6 +819,7 @@ shouldSuggestAlternative(itemName) {
     this.showExpenseSuccessMessage(error.message || 'Failed to save expense');
   }
 },
+
 validateExpenseForm() {
   // Check if required fields are filled
   if (!this.itemPrice || isNaN(Number(this.itemPrice))) {
@@ -905,6 +947,33 @@ async deleteExpenseHandler(id) {
 
  
 <style scoped>
+.month-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 0;
+  font-size: 1.2rem;
+}
+
+.month-selector button {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 5px 15px;
+  margin: 0 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.month-selector button:hover {
+  background: #e0e0e0;
+}
+
+.month-selector span {
+  min-width: 150px;
+  text-align: center;
+  font-weight: bold;
+}
 .predicting-text {
   color: #555;
   font-style: italic;
