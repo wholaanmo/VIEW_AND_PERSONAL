@@ -183,13 +183,25 @@ export default createStore({
     },
     async fetchExchangeRate({ commit }) {
       try {
-        const response = await axios.get('https://api.exchangerate-api.com/v4/latest/USD')
-        commit('SET_EXCHANGE_RATE', response.data.rates.PHP)
+        const response = await axios.get('https://api.exchangerate.host/latest?base=PHP&symbols=USD')
+        console.log('Exchange rate API response:', response.data);
+        
+        const phpToUsdRate = response.data.rates.USD;
+        console.log('Current PHP to USD rate:', phpToUsdRate);
+
+        commit('SET_EXCHANGE_RATE', phpToUsdRate);
+        return { success: true, rate: phpToUsdRate };
       } catch (error) {
         console.error("Error fetching exchange rate:", error)
-        return { success: false, message: error.message }
+        commit('SET_EXCHANGE_RATE', 0.018045);
+        return { 
+          success: false, 
+          message: error.message,
+          rate: 0.018045 // Fallback rate
+        };
       }
     },
+    
     async fetchViewExpenses({ commit, state }) {
       try {
         const response = await axios.get('/api/expenses', {
