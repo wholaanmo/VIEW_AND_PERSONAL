@@ -65,7 +65,7 @@
 
         <!-- Display Total Amount -->
         <div class="total-amount">
-          <p>Total: {{ formatCurrency(totalAmount) }}</p>
+          <p>Total: {{ formatCurrency(totalAmount) }} ({{ formatUsd(totalAmount) }})</p>
         </div>
       </div>
     </div>
@@ -171,6 +171,10 @@ export default {
 
   computed: {
     ...mapGetters(['getViewExpenses', 'getPersonalBudgets', 'getViewPageMonthYear']),
+
+    usdExchangeRate() {
+      return this.$store.state.usdExchangeRate || 0.018045;
+    },
 
    selectedMonthYear: {
     get() {
@@ -313,11 +317,18 @@ export default {
   created() {
     this.fetchViewExpenses();
     this.fetchPersonalBudgets();
+    this.fetchExchangeRate();
   },
 
   methods: {
-    ...mapActions(['fetchViewExpenses', 'fetchPersonalBudgets']),
+    ...mapActions(['fetchViewExpenses', 'fetchPersonalBudgets', 'fetchExchangeRate']),
     
+    formatUsd(value) {
+    const rate = this.$store.state.usdExchangeRate || 0.018045;
+    const usdAmount = parseFloat(value) * rate;
+    return `$${usdAmount.toFixed(2)}`;
+  },
+
     filterExpenses(category) {
       this.filterCategory = category;
     },
