@@ -88,16 +88,19 @@
         groupCodeInput: '',
         error: '',
         isLoading: false,
-         forceShow: false
+        forceShow: false,
+        preventAutoRedirect: false 
        };
      },
  
      async created() {
+      this.preventAutoRedirect = this.$route.query.fromGroup === 'true';
+
      await this.fetchUserGroups();
-     if (this.$route.query.fromGroup) {
-       this.forceShow = true;
-     }
-   },
+    if (this.$route.query.fromGroup && !this.preventAutoRedirect) {
+      this.forceShow = true;
+    }
+  },
    
      methods: {
 
@@ -114,60 +117,64 @@
            this.userGroups = response.data.data;
            localStorage.setItem('userGroups', JSON.stringify(response.data.data));
           
-           if (!this.forceShow && this.userGroups.length === 1) {
-             this.navigateToGroup(this.userGroups[0].id);
-           }
-         }
-        } catch (err) {
-    if (err.code === 'ECONNABORTED') {
-      this.error = "Request timed out. Please try again.";
-    } else {
-      this.error = "Failed to load groups. Please refresh the page.";
-    }
-    console.error('Error:', err);
-  }
-},
+           if (!this.preventAutoRedirect && 
+              !this.forceShow && 
+              this.userGroups.length === 1) {
+            setTimeout(() => {
+              if (this.$route.name === 'GC') { // Double-check we're still on GC
+                this.navigateToGroup(this.userGroups[0].id);
+              }
+            }, 100);
+          }
+        }
+      } catch (err) {
+        if (err.code === 'ECONNABORTED') {
+          this.error = "Request timed out. Please try again.";
+        } else {
+          this.error = "Failed to load groups. Please refresh the page.";
+        }
+        console.error('Error:', err);
+      }
+    },
            
      goBackToGroup() {
+      this.preventAutoRedirect = false;
+
        const storedGroups = JSON.parse(localStorage.getItem('userGroups') || '[]');
        if (storedGroups.length > 0) {
        this.navigateToGroup(storedGroups[0].id);
        return;
      }
  
-       if (this.userGroups.length > 0) {
-         this.navigateToGroup(this.userGroups[0].id);
-       }
- 
-      this.fetchUserGroups().then(() => {
-       if (this.userGroups.length > 0) {
-         this.navigateToGroup(this.userGroups[0].id);
-       } else {
-         // No groups exist - maybe show a message
-         this.error = "You don't have any groups yet";
-       }
-     });
-   },
- 
-   navigateToGroup(groupId) {
-     console.log('Attempting to navigate to group:', groupId); // Debug log
-     if (!groupId) {
-       console.error('No group ID provided for navigation');
-       return;
-     }
-     
-     this.$router.push({
-       name: 'Group',
-       params: { groupId }
-     }).catch(err => {
-       // Handle navigation errors
-       console.error('Navigation error:', err);
-       if (err.name !== 'NavigationDuplicated') {
-         // Show error to user if it's not just a duplicate navigation
-         this.error = "Failed to navigate to group";
-       }
-     });
-   },
+     if (this.userGroups.length > 0) {
+        this.navigateToGroup(this.userGroups[0].id);
+      } else {
+        this.fetchUserGroups().then(() => {
+          if (this.userGroups.length > 0) {
+            this.navigateToGroup(this.userGroups[0].id);
+          } else {
+            this.error = "You don't have any groups yet";
+          }
+        });
+      }
+    },
+
+    navigateToGroup(groupId) {
+      if (!groupId) return;
+      
+      // Set the flag to prevent auto-redirect when coming back
+      this.preventAutoRedirect = true;
+      
+      this.$router.push({
+        name: 'Group',
+        params: { groupId }
+      }).catch(err => {
+        if (err.name !== 'NavigationDuplicated') {
+          console.error('Navigation error:', err);
+          this.error = "Failed to navigate to group";
+        }
+      });
+    },
  
      formatDate(dateString) {
        // Your date formatting implementation
@@ -282,22 +289,25 @@
    }
  }
  },
+
  beforeRouteEnter(to, from, next) {
-   next(async vm => {
-     // Only auto-redirect if coming from login or home page
-     if (from.path === '/' || from.path === '/login') {
-       try {
-         const response = await vm.$axios.get('/api/grp_expenses/my-groups');
-         if (response.data?.success && response.data.data?.length > 0 && to.path === '/GC') {
-           vm.navigateToGroup(response.data.data[0].id);
-         }
+    next(async vm => {
+      if ((from.path === '/' || from.path === '/login') && 
+          !to.query.fromGroup) {
+        try {
+          const response = await vm.$axios.get('/api/grp_expenses/my-groups');
+          if (response.data?.success && 
+              response.data.data?.length === 1 && 
+              to.path === '/GC') {
+            vm.navigateToGroup(response.data.data[0].id);
+          }
         } catch (err) {
-         console.error('Error fetching groups:', err);
-       }
-     }
+          console.error('Error fetching groups:', err);
+        }
+      }
     });
- }
- };
+  }
+};
    </script>
    
    <style scoped>
