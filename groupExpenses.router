@@ -9,10 +9,18 @@ const {
   deleteGroupExpense,
   getGroupExpenses,
   verifyExpenseOwnership,
-  removeMember
+  removeMember,
+  updateGroupName,
+  deleteGroup
 } = require('./groupExpenses.controller');
 
 router.use(checkToken);
+
+router.put(
+  '/update-group/:groupId',
+  groupAuth('admin'), 
+  updateGroupName
+);
 
 router.delete(
   '/:groupId/members/:memberId', 
@@ -35,6 +43,12 @@ router.delete(
   groupAuth('member'), 
   verifyExpenseOwnership,
   deleteGroupExpense
+);
+
+router.delete(
+  '/delete-group/:groupId', 
+  groupAuth('admin'),
+  deleteGroup
 );
 
 module.exports = router;
