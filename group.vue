@@ -186,10 +186,27 @@
             <h3>Group Settings</h3>
             <div class="setting-item">
               <label>Group Name</label>
-              <input v-model="group.group_name" type="text" class="setting-input">
-              <button @click="updateGroupName" class="save-button">Save</button>
-            </div>
-          </div>
+  <div class="input-group">
+    <input 
+      v-model="group.group_name" 
+      @blur="handleNameUpdate"
+      @keyup.enter="handleNameUpdate"
+      type="text" 
+      class="setting-input"
+      :disabled="updatingName"
+    >
+    <button 
+      @click="handleNameUpdate" 
+      class="save-button"
+      :disabled="!nameChanged || updatingName"
+    >
+      <span v-if="updatingName">Saving...</span>
+      <span v-else>Save</span>
+    </button>
+  </div>
+  <p v-if="nameError" class="error-message">{{ nameError }}</p>
+  </div>
+</div>
           
           <div class="danger-zone">
             <h3>Danger Zone</h3>
@@ -332,6 +349,9 @@ export default {
       currentMonthYear: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
       expensesError: null,
       expensesLoading: false,
+      updatingName: false,
+      nameError: '',
+      originalName: '',
       // Modals
       showAddExpenseModal: false,
       showEditExpenseModal: false,
@@ -366,6 +386,10 @@ export default {
     }),
     ...mapGetters('group', ['creatorName']),
 
+    nameChanged() {
+    return this.group.group_name !== this.originalName;
+  },
+
     group() {
       return this.currentGroup || {};
     },
@@ -379,10 +403,11 @@ export default {
   watch: {
     'groupId': {
       immediate: true,
-      handler(newGroupId) {
+      async handler(newGroupId) {
         if (newGroupId && newGroupId !== this.localGroupId) {
-        this.localGroupId = newGroupId;
-        this.initializeGroupData();
+          this.localGroupId = newGroupId;
+          await this.initializeGroupData();
+          this.originalName = this.group.group_name || '';
         }
       }
     }
@@ -414,6 +439,8 @@ export default {
     console.log('Loading expenses...');
     await this.loadExpenses();
     console.log('All data loaded successfully');
+    
+    this.originalName = this.group.group_name || '';
 
     await this.fetchUserGroups();
   } catch (err) {
@@ -439,7 +466,6 @@ export default {
       'deleteExpense',
       'sendInvite',
       'removeMember',
-      'updateGroupName',
       'deleteGroup'
     ]),
 
@@ -761,27 +787,37 @@ export default {
       };
       this.showConfirmationModal = true;
     },
+
+    async handleNameUpdate() {
+  if (!this.nameChanged) return;
+  
+  this.updatingName = true;
+  this.nameError = '';
+  
+  try {
+    await this.updateGroupNameLocal();
+    this.originalName = this.group.group_name; 
+  } catch (error) {
+    this.nameError = error.message || 'Failed to update name';
+    this.group.group_name = this.originalName;
+  } finally {
+    this.updatingName = false;
+  }
+},
     
-    async updateGroupName() {
-      try {
-        await this.updateGroupName({ 
-          groupId: this.localGroupId,
-          name: this.currentGroup.group_name 
-        });
-        this.$notify({
-          title: 'Success',
-          message: 'Group name updated successfully',
-          type: 'success'
-        });
-      } catch (err) {
-        console.error('Error updating group name:', err);
-        this.$notify({
-          title: 'Error',
-          message: err.response?.data?.message || 'Failed to update group name',
-          type: 'error'
-        });
-      }
-    },
+    async updateGroupNameLocal() {
+  if (!this.group.group_name.trim()) return;
+
+  try {
+    await this.$store.dispatch('group/updateGroupName', {
+      groupId: this.localGroupId,
+      name: this.group.group_name.trim()
+    });
+    this.$notify({ title: 'Success', message: 'Name updated!', type: 'success' });
+  } catch (err) {
+    this.$notify({ title: 'Error', message: 'Update failed', type: 'error' });
+  }
+},
     
     confirmDeleteGroup() {
       this.confirmationTitle = 'Delete Group';
@@ -854,6 +890,17 @@ export default {
 </script>
 
 <style scoped>
+.input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+
 .group-content {
   background: #ffffff;
   border-radius: 12px;
@@ -1153,6 +1200,7 @@ export default {
 .error-message {
   color: #d32f2f;
   margin-bottom: 15px;
+  margin-top: 4px;
 }
 
 .retry-button {
