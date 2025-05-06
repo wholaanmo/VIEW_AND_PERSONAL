@@ -9,10 +9,12 @@ export default createStore({
   state: {
     viewExpenses: [], // Expenses for view page
     addExpenses: [], 
+    expenses: [],
     personalBudgets: [],
     usdExchangeRate: 56.50,
     viewPageMonthYear: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'), // For view page
     addExpenseMonthYear: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'), // For add expense page
+    currentSelectedMonth: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'),
     globalAlert: null
   },
   getters: {
@@ -91,6 +93,9 @@ export default createStore({
     }
   },
   mutations: {
+    SET_CURRENT_MONTH(state, monthYear) {
+      state.currentSelectedMonth = monthYear;
+    },
     SET_VIEW_EXPENSES(state, expenses) {
       state.viewExpenses = expenses
     },
@@ -149,17 +154,17 @@ export default createStore({
           return;
         }
     
-        const index = state.expenses.findIndex(e => e.id === updatedExpense.id);
+        const index = state.addExpenses.findIndex(e => e.id === updatedExpense.id);
         if (index === -1) {
           console.warn('Expense not found for update:', updatedExpense.id);
           return;
         }
         const mergedExpense = {
-          ...state.expenses[index], // Existing data
+          ...state.addExpenses[index], // Existing data
           ...updatedExpense,       // Updated fields
           id: updatedExpense.id    // Ensure ID is preserved
         };
-        state.expenses.splice(index, 1, mergedExpense);
+        state.addExpenses.splice(index, 1, mergedExpense);
       } catch (error) {
         console.error('Error in UPDATE_EXPENSE:', error);
       }
@@ -178,6 +183,9 @@ export default createStore({
     }
   },
   actions: {
+    setCurrentMonth({ commit }, monthYear) {
+      commit('SET_CURRENT_MONTH', monthYear);
+    },
     setSelectedMonthYear({ commit }, monthYear) {
       commit('SET_SELECTED_MONTH_YEAR', monthYear);
     },
@@ -186,7 +194,10 @@ export default createStore({
         const response = await axios.get('https://api.exchangerate.host/latest?base=PHP&symbols=USD')
         console.log('Exchange rate API response:', response.data);
         
-        const phpToUsdRate = response.data.rates.USD;
+        const phpToUsdRate = response.data?.rates?.USD || 0.018045;
+        if (!phpToUsdRate) {
+          console.warn('USD rate not found in response, using fallback');
+        }
         console.log('Current PHP to USD rate:', phpToUsdRate);
 
         commit('SET_EXCHANGE_RATE', phpToUsdRate);
@@ -197,7 +208,7 @@ export default createStore({
         return { 
           success: false, 
           message: error.message,
-          rate: 0.018045 // Fallback rate
+          rate: 0.018045 
         };
       }
     },
@@ -317,11 +328,10 @@ async updateExpense({ commit }, { id, expenseData }) {
     }
 
     if (response.data.success) {
-      // Ensure the updated expense has an ID
       const updatedExpense = {
-        id: id, // Always include the ID from the parameters
-        ...expenseData, // Include all the updated fields
-        ...response.data.data // Include any additional fields from the response
+        id: id, 
+        ...expenseData, 
+        ...response.data.data 
       };
       commit('UPDATE_EXPENSE', updatedExpense);
       return { 
