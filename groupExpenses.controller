@@ -2,8 +2,7 @@ const groupExpenseService = require('../grp_expenses/groupExpenses.service');
 const groupService = require('../grp_expenses/group.service');
 const pool = require('../../config/database');
 
-module.exports = {
-  addGroupExpense: async (req, res) => {
+  exports.addGroupExpense = async (req, res) => {
     try {
       const { item_price, expense_type, item_name } = req.body;
       const userId = req.user.userId;
@@ -47,10 +46,10 @@ module.exports = {
         message: err.message || "Failed to add expense"
       });
     }
-  },
+  };
 
   // Edit an existing group expense
-  editGroupExpense: async (req, res) => {
+  exports.editGroupExpense = async (req, res) => {
     try {
       const { item_price, expense_type, item_name } = req.body;
       const expenseId = req.params.expenseId || req.params.id;
@@ -82,9 +81,9 @@ module.exports = {
             message: err.message || "Failed to update expense"
         });
     }
-},
+};
 
-deleteGroupExpense: async (req, res) => {
+exports.deleteGroupExpense = async (req, res) => {
     try {
       const expenseId = req.params.expenseId || req.params.id;
       await groupExpenseService.deleteGroupExpense(expenseId);
@@ -100,10 +99,10 @@ deleteGroupExpense: async (req, res) => {
         message: err.message || "Deletion failed"
       });
     }
-},
+};
 
   // Get expenses for a specific group
-  getGroupExpenses: async (req, res) => {
+  exports.getGroupExpenses = async (req, res) => {
     try {
       const groupId = req.params.groupId;
       const monthYear = req.query.monthYear || 
@@ -130,10 +129,54 @@ deleteGroupExpense: async (req, res) => {
         message: "Failed to fetch expenses"
       });
     }
-},
+};
+
+exports.removeMember = async (req, res) => {
+  try {
+    const { groupId, memberId } = req.params;
+    const userId = req.user.userId;
+
+    const [membership] = await pool.query(
+      'SELECT role FROM group_members WHERE group_id = ? AND user_id = ?',
+      [groupId, userId]
+    );
+    
+    if (membership.length === 0 || (membership[0].role !== 'admin')) {
+      return res.status(403).json({
+        success: 0,
+        message: "Admin access required"
+      });
+    }
+
+    // Prevent removing yourself
+    if (parseInt(memberId) === parseInt(userId)) {
+      return res.status(400).json({
+        success: 0,
+        message: "You cannot remove yourself"
+      });
+    }
+
+    // Remove the member directly since we already verified admin status
+    await pool.query(
+      'DELETE FROM group_members WHERE group_id = ? AND user_id = ?',
+      [groupId, memberId]
+    );
+    
+    return res.json({
+      success: 1,
+      message: "Member removed successfully"
+    });
+  } catch (err) {
+    console.error("Remove member error:", err);
+    return res.status(500).json({
+      success: 0,
+      message: err.message || "Failed to remove member"
+    });
+  }
+};
   
 // Middleware to verify expense ownership
-verifyExpenseOwnership: async (req, res, next) => {
+exports.verifyExpenseOwnership = async (req, res, next) => {
   try {
     const expenseId = req.params.expenseId || req.params.id;
     const userId = req.user.userId;
@@ -167,5 +210,5 @@ verifyExpenseOwnership: async (req, res, next) => {
       message: "Internal server error"
     });
   }
-}
 };
+
