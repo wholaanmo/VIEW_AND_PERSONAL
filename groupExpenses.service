@@ -131,6 +131,40 @@ addGroupExpense: async (expenseData) => {
   }
 },
 
+removeMember: async (groupId, memberId) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.query(
+      'DELETE FROM group_members WHERE group_id = ? AND user_id = ?',
+      [groupId, memberId]
+    );
+    return true;
+  } catch (err) {
+    console.error('Remove member error:', err);
+    throw new Error('Failed to remove member');
+  } finally {
+    if (connection) connection.release();
+  }
+},
+
+isGroupAdmin: async (userId, groupId) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.query(
+      'SELECT role FROM group_members WHERE user_id = ? AND group_id = ?',
+      [userId, groupId]
+    );
+    return rows.length > 0 && rows[0].role === 'admin';
+  } catch (err) {
+    console.error('Check admin error:', err);
+    throw err;
+  } finally {
+    if (connection) connection.release();
+  }
+},
+
   canUserEditExpense: async (userId, expenseId) => {
     let connection;
     try {
