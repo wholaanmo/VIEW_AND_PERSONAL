@@ -1,0 +1,19 @@
+const express = require('express');
+const router = express.Router();
+const groupController = require('./group.controller');
+const { checkToken } = require('../../auth/token_validation');
+const groupAuth = require('../../auth/groupAuth');
+
+router.post('/create', checkToken, groupController.createGroup);
+router.post('/join', checkToken, groupController.joinGroup);
+router.get('/my-groups', checkToken, groupController.getUserGroups);
+
+// Group-specific routes (require membership)
+router.get('/:groupId', checkToken, groupAuth('member'), groupController.getGroupInfo);
+router.get('/:groupId/members', checkToken, groupAuth('member'), groupController.getMembers);
+
+// Admin-only routes
+router.delete('/:groupId', checkToken, groupAuth('admin'), groupController.deleteGroup);
+router.post('/:groupId/invite', checkToken, groupAuth('admin'), groupController.inviteMember);
+
+module.exports = router;
