@@ -100,26 +100,33 @@
    },
    
      methods: {
+
        async fetchUserGroups() {
        try {
          const response = await this.$axios.get('/api/grp_expenses/my-groups', {
            headers: {
              Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
-           }
+           },
+           timeout: 30000
          });
  
          if (response.data.success) {
            this.userGroups = response.data.data;
- 
            localStorage.setItem('userGroups', JSON.stringify(response.data.data));
+          
            if (!this.forceShow && this.userGroups.length === 1) {
              this.navigateToGroup(this.userGroups[0].id);
            }
          }
-       } catch (err) {
-         console.error('Failed to fetch user groups:', err);
-       }
-     },
+        } catch (err) {
+    if (err.code === 'ECONNABORTED') {
+      this.error = "Request timed out. Please try again.";
+    } else {
+      this.error = "Failed to load groups. Please refresh the page.";
+    }
+    console.error('Error:', err);
+  }
+},
            
      goBackToGroup() {
        const storedGroups = JSON.parse(localStorage.getItem('userGroups') || '[]');
