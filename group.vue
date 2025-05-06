@@ -114,32 +114,69 @@
           <div v-else-if="expensesError" class="error-message">
             {{ expensesError }}
           </div>
+
+          <div v-else-if="expensesError" class="error-message">
+    Error loading expenses: {{ expensesError }}
+    <button @click="loadExpenses" class="retry-btn">Retry</button>
+  </div>
+  
+  <div v-else-if="!expenses">
+    <p>Expenses data not loaded</p>
+    <button @click="loadExpenses" class="retry-btn">Load Expenses</button>
+  </div>
           
-          <div v-else-if="!expenses || expenses.length === 0" class="no-expenses">
-  <p>No expenses recorded for {{ currentMonthYear }}</p>
-</div>
+          <div v-else-if="!filteredExpenses || filteredExpenses.length === 0" class="no-expenses">
+    <p>No expenses recorded for {{ currentMonthYear }}</p>
+  </div>
           
-          <div v-else class="expenses-list">
-            <div class="expense-item" v-for="expense in expenses" :key="expense.id">
-              <div class="expense-info">
-                <span class="expense-name">{{ expense.item_name }}</span>
-                <span class="expense-user">{{ expense.user_name }}</span>
-                <span class="expense-type">{{ expense.expense_type }}</span>
-              </div>
-              <div class="expense-amount">
-                ₱{{ expense.item_price.toFixed(2) }}
-                <div class="expense-actions" v-if="canEditExpense(expense)">
-                  <button @click="editExpense(expense)" class="action-button edit">
-                    <i class="fas fa-edit"></i>
-                  </button>
-                  <button @click="confirmDeleteExpense(expense)" class="action-button delete">
-                    <i class="fas fa-trash"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+  <div v-else class="expenses-container">
+    <div class="expenses-section"> 
+      <h3>Your Expenses</h3> 
+      <div class="expenses-table"> 
+        <table>
+          <thead>
+            <tr>
+              <th>Expense Type</th>
+              <th>Item Name</th>
+              <th>Item Price</th>
+              <th>Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="expense in filteredExpenses" :key="expense.id">
+              <td>{{ expense.expense_type || 'N/A' }}</td>
+              <td>{{ expense.item_name || 'N/A' }}</td>
+              <td>{{ formatPHP(expense.item_price) }}</td>
+              <td>{{ formatDate(expense.expense_date) }}</td>
+              <td class="actions">
+                <button 
+                  @click="editExpense(expense)" 
+                  class="edit-btn"
+                  :disabled="!canEditExpense(expense)"
+                >
+                  Edit
+                </button>
+                <button 
+                  @click="confirmDeleteExpense(expense)" 
+                  class="delete-btn"
+                  :disabled="!canEditExpense(expense)"
+                >
+                  Delete
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    
+    <div class="total">
+      Total: <strong>{{ formatPHP(totalAmount) }}</strong> 
+      (≈ {{ formatUsd(convertPhpToUsd(totalAmount)) }} USD)
+    </div>
+  </div>
+  </div>
 
         <!-- Members Tab -->
         <div v-if="activeTab === 'members'" class="members-tab">
@@ -287,7 +324,7 @@
           <button @click="closeModal" class="close-button">&times;</button>
         </div>
         <div class="modal-body">
-          <form @submit.prevent="updateExpense">
+          <form @submit.prevent="handleUpdateExpense">
             <div class="form-group">
               <label>Item Name</label>
               <input v-model="editingExpense.item_name" type="text" required>
@@ -404,6 +441,50 @@ export default {
       return this.currentGroup || {};
     },
 
+    filteredExpenses() {
+    if (!this.expenses || !Array.isArray(this.expenses)) return [];
+    return this.expenses.filter(expense => {
+      if (!expense.expense_date) return false;
+      
+      const expenseDate = new Date(expense.expense_date);
+      const currentDate = new Date(this.currentMonthYear);
+      
+      return (
+        expenseDate.getFullYear() === currentDate.getFullYear() &&
+        expenseDate.getMonth() === currentDate.getMonth()
+      );
+    });
+  },
+
+
+  totalAmount() {
+    return this.filteredExpenses.reduce((total, expense) => {
+      return total + (expense.item_price || 0);
+    }, 0);
+  },
+
+  // Format PHP currency
+  formatPHP() {
+    return (amount) => {
+      return `₱${parseFloat(amount || 0).toFixed(2)}`;
+    };
+  },
+
+  // Convert PHP to USD (example rate)
+  convertPhpToUsd() {
+    return (phpAmount) => {
+      const exchangeRate = 0.018; // Example rate, replace with actual API call
+      return phpAmount * exchangeRate;
+    };
+  },
+
+  // Format USD currency
+  formatUsd() {
+    return (amount) => {
+      return `$${parseFloat(amount || 0).toFixed(2)}`;
+    };
+  },
+
     hasGroupAccess() {
       const user = JSON.parse(localStorage.getItem('user'));
       return this.group?.id && this.members?.some(m => m.id === user?.id);
@@ -448,6 +529,8 @@ export default {
     await this.fetchGroupData();
     console.log('Loading expenses...');
     await this.loadExpenses();
+    console.log('Fetching exchange rates...');
+    await this.fetchExchangeRate();
     console.log('All data loaded successfully');
     
     this.originalName = this.group.group_name || '';
@@ -486,6 +569,16 @@ export default {
       }
     },
     
+    async fetchExchangeRate() {
+    try {
+      const response = await this.$axios.get('https://api.exchangerate-api.com/v4/latest/PHP');
+      this.exchangeRate = response.data.rates.USD;
+    } catch (err) {
+      console.error('Failed to fetch exchange rate, using default', err);
+      this.exchangeRate = 0.018; // Fallback rate
+    }
+  },
+
     async fetchUserGroups() {
       try {
         const response = await this.$axios.get('/api/grp_expenses/my-groups', {
@@ -496,11 +589,16 @@ export default {
         
         if (response.data.success) {
           this.userGroups = response.data.data;
-        }
-      } catch (err) {
-        console.error('Failed to fetch user groups:', err);
+          localStorage.setItem('userGroups', JSON.stringify(response.data.data));
+          const updatedGroup = response.data.data.find(g => g.id === this.localGroupId);
+      if (updatedGroup && this.group.id === this.localGroupId) {
+        this.$store.commit('group/SET_GROUP', updatedGroup);
       }
-    },
+    }
+  } catch (err) {
+    console.error('Failed to fetch user groups:', err);
+  }
+},
     
     navigateToGroup(groupId) {
       this.showGroupList = false;
@@ -606,10 +704,19 @@ export default {
       this.expensesLoading = true;
       this.expensesError = null;
       try {
-
     const monthYear = this.formatMonthYear(this.currentMonthYear);
-    await this.fetchExpenses({ groupId: this.localGroupId, monthYear });
-    } catch (err) {
+    console.log('Loading expenses for:', this.localGroupId, monthYear);
+
+    const response = await this.fetchExpenses({ 
+      groupId: this.localGroupId, 
+      monthYear 
+    });
+    console.log('Expenses loaded:', response);
+  } catch (err) {
+    console.error('Error loading expenses:', {
+      error: err,
+      response: err.response?.data
+    });
     this.expensesError = err.response?.data?.message || 'Failed to load expenses';
   } finally {
     this.expensesLoading = false;
@@ -677,12 +784,11 @@ export default {
       message: 'Expense added successfully',
       type: 'success'
     });
-    
-    // Refresh expenses list
-    await this.loadExpenses();
-    
+
     this.closeModal();
     this.resetNewExpense();
+    
+    await this.loadExpenses();
   } catch (err) {
     console.error('Error adding expense:', err);
     this.$notify({
@@ -697,8 +803,15 @@ export default {
       this.editingExpense = { ...expense };
       this.showEditExpenseModal = true;
     },
+
+    deleteExpenseHandler(expenseId) {
+    const expense = this.expenses.find(e => e.id === expenseId);
+    if (expense) {
+      this.confirmDeleteExpense(expense);
+    }
+  },
     
-    async updateExpense() {
+  async handleUpdateExpense() {
       try {
         await this.updateExpense(this.editingExpense);
         this.$notify({
@@ -707,6 +820,7 @@ export default {
           type: 'success'
         });
         this.closeModal();
+        await this.loadExpenses()
       } catch (err) {
         console.error('Error updating expense:', err);
         this.$notify({
@@ -719,7 +833,7 @@ export default {
     
     confirmDeleteExpense(expense) {
       this.confirmationTitle = 'Delete Expense';
-      this.confirmationMessage = `Are you sure you want to delete "${expense.item_name}" (₱${expense.item_price.toFixed(2)})?`;
+      this.confirmationMessage = `Are you sure you want to delete "${expense.item_name}" (${this.formatPHP(expense.item_price)})?`;
       this.confirmAction = async () => {
         try {
           await this.deleteExpense(expense.id);
@@ -728,6 +842,7 @@ export default {
             message: 'Expense deleted successfully',
             type: 'success'
           });
+          await this.loadExpenses(); 
           this.closeModal();
         } catch (err) {
           console.error('Error deleting expense:', err);
@@ -823,9 +938,21 @@ export default {
       groupId: this.localGroupId,
       name: this.group.group_name.trim()
     });
-    this.$notify({ title: 'Success', message: 'Name updated!', type: 'success' });
+
+    await this.fetchUserGroups();
+
+    this.$notify({ 
+      title: 'Success', 
+      message: 'Name updated!', 
+      type: 'success' 
+    });
   } catch (err) {
-    this.$notify({ title: 'Error', message: 'Update failed', type: 'error' });
+    this.$notify({ 
+      title: 'Error', 
+      message: 'Update failed', 
+      type: 'error' 
+    });
+    throw err;
   }
 },
     
@@ -901,6 +1028,99 @@ export default {
 </script>
 
 <style scoped>
+.retry-btn {
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.retry-btn:hover {
+  background-color: #1565c0;
+}
+.expenses-container {
+  margin-top: 20px;
+}
+
+.expenses-table {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+th, td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+tr:hover {
+  background-color: #f5f5f5;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-btn, .delete-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.edit-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.edit-btn:hover {
+  background-color: #45a049;
+}
+
+.delete-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+.delete-btn:hover {
+  background-color: #d32f2f;
+}
+
+.edit-btn:disabled, 
+.delete-btn:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.total {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  font-size: 16px;
+  text-align: right;
+}
+
+.no-expenses {
+  text-align: center;
+  padding: 30px;
+  color: #666;
+}
 .input-group {
   display: flex;
   gap: 8px;
@@ -910,7 +1130,6 @@ export default {
   opacity: 0.6;
   cursor: not-allowed;
 }
-
 
 .group-content {
   background: #ffffff;
