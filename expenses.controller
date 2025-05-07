@@ -8,7 +8,7 @@ module.exports = {
       const userId = req.user.userId;
 
       const budget = await pool.query(
-        'SELECT * FROM personal_budgets WHERE id = ? AND userId = ?',
+        'SELECT * FROM personal_budgets WHERE id = ? AND user_id = ?',
         [personal_budget_id, userId]
       );
       
@@ -26,27 +26,29 @@ module.exports = {
         });
       }
 
-      await expenseService.addExpense({
-        userId, 
-        item_price, 
-        expense_type, 
-        item_name, 
-        personal_budget_id
-      });
+      const [result] = await pool.query(
+        'INSERT INTO expenses (userId, personal_budget_id, expense_type, item_name, item_price, expense_date) VALUES (?, ?, ?, ?, ?, NOW())',
+        [userId, personal_budget_id, expense_type, item_name, item_price]
+      );
 
       return res.status(200).json({
         success: 1,
-        message: "Expense added successfully"
+        message: "Expense added successfully",
+        data: {
+          id: result.insertId,
+          userId,
+          personal_budget_id,
+          expense_type,
+          item_name,
+          item_price,
+          expense_date: new Date().toISOString()
+        }
       });
     } catch (err) {
-      let message = "Database error";
-      if (err.message === "The specified personal budget does not exist") {
-        message = err.message;
-      }
       console.error("Add expense error:", err);
       return res.status(500).json({
         success: 0,
-        message: message
+        message: err.message || "Database error"
       });
     }
   },
@@ -130,15 +132,21 @@ module.exports = {
       }
       
       const [year, month] = monthYear.split('-').map(Number);
+
       const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0);
+      const endDate = new Date(year, month, 0); 
+
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
 
       const [expenses] = await pool.query(
-        `SELECT * FROM expenses 
-         WHERE userId = ? 
-         AND expense_date BETWEEN ? AND ?
-         ORDER BY expense_date DESC`,
-        [userId, startDate, endDate]
+        `SELECT e.*, pb.month_year 
+         FROM expenses e
+         LEFT JOIN personal_budgets pb ON e.personal_budget_id = pb.id
+         WHERE e.userId = ? 
+         AND DATE(e.expense_date) BETWEEN ? AND ?
+         ORDER BY e.expense_date DESC`,
+        [userId, startDateStr, endDateStr]
       );
 
       return res.json({
@@ -150,7 +158,7 @@ module.exports = {
       return res.status(500).json({
         success: 0,
         message: "Failed to get expenses",
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        error: err.message
       });
     }
   }
