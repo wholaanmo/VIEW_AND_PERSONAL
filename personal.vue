@@ -252,13 +252,14 @@
        currentMonthYear: this.getCurrentMonthYear(),
        showBudgetExceededAlert: false,
        alertDismissed: false,
+       dismissedAlerts: {},
        showDeleteConfirmation: false,
        expenseToDelete: null,
        lastCheckedMonthYear: null,
        isPredicting: false,
        showPredictionFeedback: false,
        predictionDebounce: null,
-       exchangeRateError: null
+       exchangeRateError: null,
      };
    },
    
@@ -374,13 +375,14 @@ currentBudget() {
    async mounted() {
   try {
     this.isLoading = true;
-    this.alertDismissed = localStorage.getItem('budgetAlertDismissed') === 'true';
+    const savedDismissedAlerts = localStorage.getItem('dismissedAlerts');
+    if (savedDismissedAlerts) {
+      this.dismissedAlerts = JSON.parse(savedDismissedAlerts);
+    }
     
     const now = new Date();
     const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     await this.setSelectedMonthYear(currentMonthYear);
-
-    this.checkMonthChange();
 
     await Promise.all([
       this.fetchExchangeRate(),
@@ -390,7 +392,6 @@ currentBudget() {
     ]);
     
     this.checkBudgetStatus();
-    this.monthCheckInterval = setInterval(this.checkMonthChange, 86400000); 
     } catch (error) {
       console.error("Initialization error:", error);
       this.error = error.message || 'Failed to load data';
@@ -405,16 +406,15 @@ currentBudget() {
 
 
   watch: {
-    totalAmount: {
-    immediate: true,
+  filteredExpenses: {
+    deep: true,
     handler() {
       this.checkBudgetStatus();
     }
   },
-  
-  currentBudget: {
+
+  currentMonthBudget: {
     deep: true,
-    immediate: true,
     handler() {
       this.checkBudgetStatus();
     }
@@ -457,12 +457,13 @@ currentBudget() {
   async changeMonth(date) {
     const newMonthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     this.currentMonthYear = newMonthYear;
-    await this.$store.dispatch('setSelectedMonthYear', newMonthYear);
+
     
     await Promise.all([
       this.$store.dispatch('fetchAddExpenses'),
       this.loadBudgetForMonth(newMonthYear)
     ]);
+    this.checkBudgetStatus();
   },
 
     checkMonthChange() {
@@ -597,41 +598,32 @@ shouldSuggestAlternative(itemName) {
 
     dismissAlert() {
     this.showBudgetExceededAlert = false;
-    this.alertDismissed = true;
-    localStorage.setItem('budgetAlertDismissed', 'true');
-  },
+    this.$set(this.dismissedAlerts, this.currentMonthYear, true);
+    localStorage.setItem('dismissedAlerts', JSON.stringify(this.dismissedAlerts));
+},
 
   dismissAlert() {
     this.showBudgetExceededAlert = false;
-    this.alertDismissed = true;
-    localStorage.setItem('budgetAlertDismissed', 'true');
-  },
+    this.$set(this.dismissedAlerts, this.currentMonthYear, true);
+  localStorage.setItem('dismissedAlerts', JSON.stringify(this.dismissedAlerts));
+},
 
   checkBudgetStatus(forceShow = false) {
-    if (!forceShow) {
-    this.showBudgetExceededAlert = false;
-  }
+    const budget = this.currentMonthBudget;
 
-   const budget = this.currentBudget;
   if (!budget?.budget_amount || budget.budget_amount <= 0) {
     this.showBudgetExceededAlert = false;
     return;
   }
+  
+  const expensesForSelectedMonth = this.filteredExpenses.reduce((sum, expense) => {
+    return sum + (Number(expense.item_price) || 0);
+  }, 0);
 
-  const currentMonthYear = this.getCurrentMonthYear();
-  if (this.lastCheckedMonthYear !== currentMonthYear) {
-    this.alertDismissed = false;
-    localStorage.removeItem('budgetAlertDismissed');
-    this.lastCheckedMonthYear = currentMonthYear;
-  }
+  const isExceeded = expensesForSelectedMonth > budget.budget_amount;
+  const isDismissed = this.dismissedAlerts[this.currentMonthYear] || false;
 
-  const isExceeded = this.totalAmount > Number(budget.budget_amount);
-
-  if (isExceeded && (forceShow || !this.alertDismissed)) {
-    this.showBudgetExceededAlert = true;
-  } else {
-    this.showBudgetExceededAlert = false;
-  }
+  this.showBudgetExceededAlert = isExceeded && (forceShow || !isDismissed);
 },
   
      getCurrentMonthYear() {
@@ -880,12 +872,11 @@ shouldSuggestAlternative(itemName) {
         this.fetchAddExpenses(),
         this.fetchPersonalBudgets()
       ]);
+
+      this.checkBudgetStatus(true);
       
-      // Force a check after everything is updated
-      this.$nextTick(() => {
-        console.log('Checking budget after expense update');
-        this.checkBudgetStatus(true); // Force re-check and re-alert
-      });
+      this.showExpenseSuccessMessage(result.message || (this.editId ? 'Expense updated!' : 'Expense added successfully!'));
+      this.resetForm();
     } else {
       this.showExpenseSuccessMessage(result.message || 'Operation failed');
     }
