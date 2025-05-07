@@ -1,6 +1,6 @@
 <template>
   <Navigation />
-
+  <div class="group-header-decoration">
   <div class="group-container">
 
     <!-- Add this container for the group list -->
@@ -140,6 +140,7 @@
               <th>Item Name</th>
               <th>Item Price</th>
               <th>Date</th>
+              <th>Added By</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -149,6 +150,7 @@
               <td>{{ expense.item_name || 'N/A' }}</td>
               <td>{{ formatPHP(expense.item_price) }}</td>
               <td>{{ formatDate(expense.expense_date) }}</td>
+              <td>{{ expense.username }}</td>
               <td class="actions">
                 <button 
                   @click="editExpense(expense)" 
@@ -171,12 +173,21 @@
       </div>
     </div>
     
-    <div class="total">
-      Total: <strong>{{ formatPHP(totalAmount) }}</strong> 
-      (≈ {{ formatUsd(convertPhpToUsd(totalAmount)) }} USD)
+    <div class="total-summary">
+  <div class="total-amount-card">
+    <div class="total-label">Total Expenses</div>
+    <div class="amount-display">
+      <span class="currency php">{{ formatPHP(totalAmount) }}</span>
+      <span class="currency usd">≈ {{ formatUsd(convertPhpToUsd(totalAmount)) }}</span>
+    </div>
+    <div class="exchange-rate-display">
+      <i class="fas fa-sync-alt"></i> 1 PHP = {{ (exchangeRate || 0.018045).toFixed(6) }} USD
     </div>
   </div>
+</div>
   </div>
+  </div>
+
 
         <!-- Members Tab -->
         <div v-if="activeTab === 'members'" class="members-tab">
@@ -369,6 +380,7 @@
       </div>
     </div>
   </div>
+  </div>
 </template>
 
 <script>
@@ -399,6 +411,8 @@ export default {
       originalName: '',
       deletingGroup: false,
       deleteGroupError: '',
+      exchangeRate: null,
+      lastExchangeRateUpdate: null,
       // Modals
       showAddExpenseModal: false,
       showEditExpenseModal: false,
@@ -458,25 +472,24 @@ export default {
 
 
   totalAmount() {
-    return this.filteredExpenses.reduce((total, expense) => {
-      return total + (expense.item_price || 0);
-    }, 0);
-  },
+  return this.filteredExpenses.reduce((total, expense) => {
+    return total + (parseFloat(expense.item_price) || 0); 
+  }, 0);
+},
 
-  // Format PHP currency
   formatPHP() {
-    return (amount) => {
-      return `₱${parseFloat(amount || 0).toFixed(2)}`;
-    };
-  },
+  return (amount) => {
+    return `₱${parseFloat(amount || 0).toFixed(2)}`;
+  };
+},
 
-  // Convert PHP to USD (example rate)
   convertPhpToUsd() {
-    return (phpAmount) => {
-      const exchangeRate = 0.018; // Example rate, replace with actual API call
-      return phpAmount * exchangeRate;
-    };
-  },
+  return (phpAmount) => {
+    const rate = this.exchangeRate || 0.018045;
+    const usd = parseFloat(phpAmount) * rate;
+    return parseFloat((phpAmount * rate).toFixed(6));
+  };
+},
 
   // Format USD currency
   formatUsd() {
@@ -570,12 +583,18 @@ export default {
     },
     
     async fetchExchangeRate() {
+      if (this.lastExchangeRateUpdate && 
+      new Date() - this.lastExchangeRateUpdate < 86400000) {
+    return;
+  }
+  
     try {
-      const response = await this.$axios.get('https://api.exchangerate-api.com/v4/latest/PHP');
+      const response = await this.$axios.get('https://api.exchangerate.host/latest?base=PHP&symbols=USD');
       this.exchangeRate = response.data.rates.USD;
+      console.log('Current exchange rate:', this.exchangeRate);
     } catch (err) {
       console.error('Failed to fetch exchange rate, using default', err);
-      this.exchangeRate = 0.018; // Fallback rate
+      this.exchangeRate = 0.018045;
     }
   },
 
@@ -836,7 +855,10 @@ export default {
       this.confirmationMessage = `Are you sure you want to delete "${expense.item_name}" (${this.formatPHP(expense.item_price)})?`;
       this.confirmAction = async () => {
         try {
-          await this.deleteExpense(expense.id);
+          await this.deleteExpense({
+        expenseId: expense.id,
+        groupId: this.localGroupId
+      });
           this.$notify({
             title: 'Success',
             message: 'Expense deleted successfully',
@@ -1028,6 +1050,64 @@ export default {
 </script>
 
 <style scoped>
+.group-header-decoration {
+  height: 4px;
+  background: linear-gradient(90deg, #2a4935 0%, #4a8c61 100%);
+  margin-bottom: 25px;
+  border-radius: 2px;
+}
+
+.total-summary {
+  margin: 25px 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.total-amount-card {
+  background: white;
+  border-radius: 10px;
+  padding: 20px;
+  width: 100%;
+  max-width: 350px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  border-top: 4px solid #2a4935;
+}
+
+.total-label {
+  font-size: 0.9rem;
+  color: #5a6a7a;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.amount-display {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.currency {
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.currency.php {
+  color: #2a4935;
+}
+
+.currency.usd {
+  color: #4a6fa5;
+  font-size: 1.2rem;
+}
+
+.exchange-rate-display {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
 .retry-btn {
   background-color: #1976d2;
   color: white;
@@ -1045,25 +1125,31 @@ export default {
   margin-top: 20px;
 }
 
-.expenses-table {
-  overflow-x: auto;
-}
-
-table {
+.expenses-table table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  overflow-x: auto;
 }
 
 th, td {
   padding: 12px 15px;
-  text-align: left;
+  text-align: center;
   border-bottom: 1px solid #ddd;
 }
 
-th {
-  background-color: #f8f9fa;
+.expenses-table th {
+  background-color: #2a4935;
+  color: white;
+  position: sticky;
+  top: 0;
   font-weight: 600;
+}
+
+.expenses-table tr:nth-child(even) {
+  background-color: #f9f9f9;
 }
 
 tr:hover {
@@ -1073,6 +1159,7 @@ tr:hover {
 .actions {
   display: flex;
   gap: 8px;
+  justify-content: center;
 }
 
 .edit-btn, .delete-btn {
@@ -1174,12 +1261,14 @@ tr:hover {
   border-radius: 20px;
   font-size: 0.9rem;
   gap: 8px;
+  background-color: #e8f0ee;
+  color: #2a4935;
 }
 
 .copy-button {
   background: none;
   border: none;
-  color: #4a6fa5;
+  color: #2a4935;
   cursor: pointer;
   padding: 0;
   font-size: 0.9rem;
@@ -1196,7 +1285,7 @@ tr:hover {
 }
 
 .my-groups-btn {
-  background: #4a6fa5;
+  background-color: #2a4935;
   color: white;
   border: none;
   padding: 8px 16px;
@@ -1211,9 +1300,21 @@ tr:hover {
 }
 
 .my-groups-btn:hover {
-  background: #3a5a8f;
+  background-color: #1e3a27;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+@media (max-width: 768px) {
+  .total-amount-card {
+    max-width: 100%;
+  }
+  
+  .amount-display {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 15px;
+  }
 }
 
 .manage-groups-btn {
@@ -1472,7 +1573,7 @@ tr:hover {
 }
 
 .group-tabs button.active {
-  color: #1976d2;
+  color: #2a4935;
   font-weight: bold;
 }
 
@@ -1505,10 +1606,15 @@ tr:hover {
   border-radius: 4px;
   padding: 5px 10px;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.month-selector button:hover {
+  background-color: #f0f0f0;
 }
 
 .add-expense-button {
-  background-color: #4caf50;
+  background-color: #2a4935;
   color: white;
   border: none;
   padding: 8px 16px;
@@ -1517,6 +1623,12 @@ tr:hover {
   display: flex;
   align-items: center;
   gap: 5px;
+  transition: all 0.3s ease;
+}
+
+.add-expense-button:hover {
+  background-color: #1e3a27;
+  transform: translateY(-2px);
 }
 
 .expenses-list {
@@ -1796,6 +1908,7 @@ tr:hover {
   max-width: 500px;
   max-height: 90vh;
   overflow-y: auto;
+  border-top: 4px solid #2a4935;
 }
 
 .modal-header {
@@ -1853,7 +1966,7 @@ tr:hover {
 }
 
 .submit-button {
-  background-color: #4caf50;
+  background-color: #2a4935;
   color: white;
   border: none;
   padding: 8px 16px;
