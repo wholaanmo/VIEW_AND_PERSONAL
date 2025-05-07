@@ -18,7 +18,23 @@
                                 <input type="password" name="password" v-model="password" class="text-style" required />
 
                                 <label class="form-label">PASSWORD CONFIRMATION</label>
-                                <input type="password" name="password_confirmation" v-model="password_confirmation" class="text-style" required />
+                                <input 
+        type="password" 
+        name="password_confirmation" 
+        v-model="password_confirmation" 
+        @input="checkPasswordStrength"
+        class="text-style" 
+        required 
+    />
+    <div class="password-strength-meter">
+        <div 
+            :class="['strength-bar', strengthClass]" 
+            :style="{ width: strengthPercentage + '%' }"
+        ></div>
+    </div>
+    <div class="password-feedback" :class="strengthClass" v-if="password.length > 0">
+        {{ strengthMessage }}
+    </div>
                             </div>
 
                             <div class="privacy-policy-container">
@@ -135,7 +151,7 @@
 </template>
 
 <script>
-import { ref, inject } from 'vue'
+import { ref, inject, computed } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 
@@ -152,6 +168,41 @@ export default {
     const acceptedPrivacyPolicy = ref(false)
     const showPrivacyModal = ref(false)
 
+    const hasMinLength = computed(() => password.value.length >= 8)
+    const hasUppercase = computed(() => /[A-Z]/.test(password.value))
+    const hasLowercase = computed(() => /[a-z]/.test(password.value))
+    const hasNumber = computed(() => /[0-9]/.test(password.value))
+    const hasSpecialChar = computed(() => /[!@#$%^&*]/.test(password.value))
+
+    const strengthScore = computed(() => {
+      let score = 0
+      if (password.value.length >= 8) score++
+      if (/[A-Z]/.test(password.value)) score++
+      if (/[a-z]/.test(password.value)) score++
+      if (/[0-9]/.test(password.value)) score++
+      if (/[!@#$%^&*]/.test(password.value)) score++
+      return score
+    })
+
+    const strengthPercentage = computed(() => strengthScore.value * 20)
+    
+    const strengthClass = computed(() => {
+      if (password.value.length === 0) return ''
+      if (strengthScore.value <= 2) return 'weak'
+      if (strengthScore.value <= 3) return 'medium'
+      return 'strong'
+    })
+
+    const strengthMessage = computed(() => {
+      if (password.value.length === 0) return ''
+      switch(strengthClass.value) {
+        case 'weak': return 'Weak password - easy to guess'
+        case 'medium': return 'Medium strength - could be stronger'
+        case 'strong': return 'Strong password - good job!'
+        default: return ''
+      }
+    })
+
     const registerUser = async () => {
       serverMessage.value = ''
     
@@ -167,6 +218,11 @@ export default {
     
       if (!acceptedPrivacyPolicy.value) {
         serverMessage.value = "You must accept the privacy policy!"
+        return
+      }
+
+      if (strengthScore.value < 3) {
+        serverMessage.value = "Please choose a stronger password (mix uppercase, numbers, and special characters)"
         return
       }
     
@@ -202,6 +258,14 @@ export default {
       serverMessage,
       acceptedPrivacyPolicy,
       showPrivacyModal,
+      hasMinLength,
+      hasUppercase,
+      hasLowercase,
+      hasNumber,
+      hasSpecialChar,
+      strengthPercentage,
+      strengthClass,
+      strengthMessage,
       registerUser,
     };
   },
@@ -209,6 +273,65 @@ export default {
 </script>
     
 <style scoped>
+.password-strength-meter {
+    height: 5px;
+    background-color: #e0e0e0;
+    border-radius: 3px;
+    margin: 8px 0;
+    overflow: hidden;
+}
+
+.strength-bar {
+    height: 100%;
+    transition: width 0.3s, background-color 0.3s;
+}
+
+.strength-bar.weak {
+    background-color: #ff4444;
+}
+.strength-bar.medium {
+    background-color: #ffbb33;
+}
+.strength-bar.strong {
+    background-color: #00C851;
+}
+
+.password-feedback {
+    font-size: 0.85rem;
+    margin-bottom: 15px;
+}
+.password-feedback.weak {
+    color: #ff4444;
+}
+.password-feedback.medium {
+    color: #ffbb33;
+}
+.password-feedback.strong {
+    color: #00C851;
+}
+
+.requirements-list {
+    margin: 8px 0 0 20px;
+    padding: 0;
+    list-style-type: none;
+    font-size: 0.8rem;
+    color: #666;
+}
+.requirements-list li {
+    margin: 3px 0;
+    position: relative;
+    padding-left: 20px;
+}
+.requirements-list li:before {
+    content: "✗";
+    position: absolute;
+    left: 0;
+    color: #ff4444;
+}
+.requirements-list li.met:before {
+    content: "✓";
+    color: #00C851;
+}
 .policy-highlights {
     margin: 2rem 0;
     padding: 1.5rem;
