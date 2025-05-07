@@ -49,10 +49,11 @@
             <button @click="nextMonth">&gt;</button>
           </div>
           
-          <div class="budget-amount">
-            <span>Budget Amount:</span>
-            <strong>{{ formatPHP(currentMonthBudget.budget_amount) }}</strong>
-          </div>
+
+  <div class="budget-amount">
+    <span>Budget Amount:</span>
+    <strong>{{ formatPHP(currentMonthBudget.budget_amount) }}</strong>
+  </div>
 
           <div class="expenses-amount">
           <span>Total Expenses:</span>
@@ -320,17 +321,12 @@
   },
 
   filteredExpenses() {
-  // Filter expenses for the currently selected month
+  const currentBudget = this.currentMonthBudget;
+  if (!currentBudget?.id) return [];
+  
   return this.addExpenses.filter(expense => {
-    if (!expense.expense_date) return false;
+    return expense.personal_budget_id === currentBudget.id;
     
-    const expenseDate = new Date(expense.expense_date);
-    const selectedDate = new Date(this.currentMonthYear);
-    
-    return (
-      expenseDate.getFullYear() === selectedDate.getFullYear() &&
-      expenseDate.getMonth() === selectedDate.getMonth()
-    );
   });
 },
 
@@ -340,7 +336,7 @@
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   },
   set(value) {
-    // Prevent month change in Add Expense page
+
     console.log("Month selection is locked in Add Expense page");
   }
 },
@@ -851,23 +847,26 @@ shouldSuggestAlternative(itemName) {
      },
  
      // Expense Methods
-     async handleSubmit() {
+  async handleSubmit() {
   try {
     if (!this.validateExpenseForm()) return;
 
-    const currentBudget = await this.$store.dispatch('fetchBudgetForMonth', this.currentMonthYear);
-    
-    if (!currentBudget?.id) {
-      this.showExpenseSuccessMessage('No budget set for this month');
-      return;
+    const currentMonthYear = this.currentMonthYear;
+    let budget = await this.$store.dispatch('fetchBudgetForMonth', currentMonthYear);
+
+    if (!budget?.id) {
+      budget = await this.$store.dispatch('addBudget', {
+        month_year: currentMonthYear,
+        budget_amount: 0
+      });
     }
 
     const expenseData = {
       item_price: Number(this.itemPrice), 
       expense_type: this.expenseType === 'Other' ? this.customExpenseType : this.expenseType,
       item_name: this.itemName,
-      personal_budget_id: currentBudget.id, // Link to budget
-      expense_date: new Date().toISOString() // Or use selected date
+      personal_budget_id: budget.id, // Link to current month's budget
+      expense_date: new Date().toISOString()
     };
     
     let result;
@@ -894,7 +893,7 @@ shouldSuggestAlternative(itemName) {
         console.error('Failed to send learning data:', learnError);
       }
     
-      this.showExpenseSuccessMessage(result.message || (this.editId ? 'Expense updated!' : 'Expense added!'));
+      this.showExpenseSuccessMessage(result.message || (this.editId ? 'Expense updated!' : 'Expense added successfully!'));
       this.resetForm();
       
       // Wait for both the expenses and budget to be refreshed
