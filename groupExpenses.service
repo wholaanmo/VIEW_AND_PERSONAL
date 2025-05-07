@@ -91,12 +91,17 @@ addGroupExpense: async (expenseData) => {
     let connection;
     try {
       connection = await pool.getConnection();
-      await connection.query(
+      await connection.beginTransaction();
+      
+      const [result] = await connection.query(
         'DELETE FROM group_expenses WHERE id = ?',
         [expenseId]
       );
-      return true;
+      
+      await connection.commit();
+      return result.affectedRows > 0;
     } catch (err) {
+      if (connection) await connection.rollback();
       console.error('Delete expense error:', err);
       throw new Error('Failed to delete expense');
     } finally {
