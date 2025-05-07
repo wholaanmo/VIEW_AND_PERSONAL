@@ -1,0 +1,83 @@
+const pool = require('../../config/database');
+
+module.exports = {
+    create: async (userdata) => {
+        try {
+            const [results] = await pool.execute(
+            'INSERT INTO users (username, email, password, registration_date) values (?,?,?,?)',
+            [
+                userdata.username,
+                userdata.email,
+                userdata.password,
+                userdata.registration_date
+            ]
+            );
+            return results;
+        } catch (error) {
+            throw error;
+        }
+    },
+    getUsers: async () => {
+        try {
+            const [results] = await pool.execute(
+            'SELECT username, email, registration_date from users',
+            );
+            return results;
+        } catch (error) {
+            throw error;
+        }
+    },
+
+    getUserByUserId: async (id) => {
+        try {
+            const [results] = await pool.execute(
+            'SELECT username, email, registration_date from users where id = ?',
+            [id]
+            );
+            return results[0];
+        } catch (error) {
+            throw error;
+        }
+    },
+
+    updateUser: async (userdata) => {
+        try {
+            const [results] = await pool.execute(
+            'UPDATE users set username=?, email=?, password=?, registration_date=? WHERE id= ?',
+            [
+                userdata.username,
+                userdata.email,
+                userdata.password,
+                userdata.registration_date,
+                userdata.id
+            ]
+            );
+            return results;
+        } catch (error) {
+            throw error;
+        }
+    },
+
+    deleteUser: async (id) => {
+        try {
+            const [results] = await pool.execute(
+                'DELETE FROM users WHERE id = ?',
+                [id]
+            );
+            return results;
+        } catch (error) {
+            throw error;
+        }
+    },
+    getUserByUserEmail: async (email) => {
+        try {
+            const [results] = await pool.execute(
+                'SELECT * FROM users WHERE email = ?',
+                [email]
+            );
+            return results[0];
+        } catch (error) {
+            throw error;
+        }
+    }
+};
