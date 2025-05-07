@@ -113,42 +113,17 @@ module.exports = {
 
   getExpenses: async (req, res) => {
     try {
-      if (!req.user || !req.user.userId) {
-        return res.status(401).json({
-          success: 0,
-          message: "Unauthorized: User not authenticated"
-        });
-      }
-
       const userId = req.user.userId;
-      const monthYear = req.query.monthYear || 
-      `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-      
-      if (!/^\d{4}-\d{2}$/.test(monthYear)) {
-        return res.status(400).json({
-          success: 0,
-          message: "Invalid monthYear format (expected YYYY-MM)"
-        });
-      }
-      
-      const [year, month] = monthYear.split('-').map(Number);
-
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0); 
-
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
 
       const [expenses] = await pool.query(
         `SELECT e.*, pb.month_year 
          FROM expenses e
          LEFT JOIN personal_budgets pb ON e.personal_budget_id = pb.id
-         WHERE e.userId = ? 
-         AND DATE(e.expense_date) BETWEEN ? AND ?
+         WHERE e.userId = ?
          ORDER BY e.expense_date DESC`,
-        [userId, startDateStr, endDateStr]
+        [userId]
       );
-
+  
       return res.json({
         success: 1,
         data: expenses
