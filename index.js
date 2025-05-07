@@ -239,13 +239,12 @@ export default createStore({
       }
     },
     
-    async fetchViewExpenses({ commit, state }) {
+    async fetchViewExpenses({ commit, state }, monthYear = null) {
       try {
+        const params = monthYear ? { monthYear } : {};
         const response = await axios.get('/api/expenses', {
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
-          params: {
-            monthYear: state.viewPageMonthYear
-          }
+          params
         });
         commit('SET_VIEW_EXPENSES', response.data.data || [])
         return { success: true }
