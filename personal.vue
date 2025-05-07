@@ -289,16 +289,14 @@
   },
   
   totalExpensesForMonth() {
-    return this.currentMonthExpenses.reduce((sum, expense) => sum + (Number(expense.item_price) || 0), 0);
+    return this.filteredExpenses.reduce((sum, expense) => {
+      return sum + (Number(expense.item_price) || 0);
+    }, 0);
   },
   
   remainingBudget() {
     return (this.currentMonthBudget.budget_amount || 0) - this.totalExpensesForMonth;
   },
-  
- // currentBudgetForMonth() {
- //   return this.$store.getters.getCurrentBudget(this.currentMonthYear);
- // },
 
   currentBudgetDisplay() {
     if (this.selectedBudget) {
@@ -308,10 +306,9 @@
   },
 
   budgetProgress() {
-    if (this.currentBudgetAmount <= 0) return 0;
-    
-    const progress = (this.totalExpensesForMonth / this.currentBudgetAmount) * 100;
-    return Math.min(progress, 100);
+    if (this.currentMonthBudget.budget_amount <= 0) return 0;
+    const progress = (this.totalExpensesForMonth / this.currentMonthBudget.budget_amount) * 100;
+    return Math.min(progress, 100); 
   },
 
   shouldShowExpenses() {
