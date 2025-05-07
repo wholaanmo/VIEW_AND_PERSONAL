@@ -102,26 +102,24 @@ module.exports = {
   },
   getBudgetByMonth: async (req, res) => {
     try {
-      console.log('Fetching budget for month:', req.params.month_year);
+      console.log('Received request for month:', req.params.month_year);
+      console.log('Authenticated user ID:', req.user.userId);
 
       const { month_year } = req.params;
       const userId = req.user.userId;
+
+      console.log(`Fetching budget for user ${userId}, month ${month_year}`);
       
       const budget = await budgetService.getBudgetByMonth(userId, month_year);
       
-      if (!budget) {
-        console.log('No budget found for month:', month_year);
-        return res.status(404).json({
-          success: 0,
-          message: "No budget found for this month"
-        });
-      }
-      
-      console.log('Returning budget:', budget);
       return res.json({
         success: 1,
-        data: budget
+        data: budget || {
+          month_year: month_year,
+          budget_amount: 0
+        }
       });
+
     } catch (err) {
       console.error('Error in getBudgetByMonth:', err);
       return res.status(500).json({
