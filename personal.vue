@@ -347,14 +347,11 @@ currentBudget() {
       return this.selectedMonthYear || this.currentMonthYear;
     },
  
-     totalAmount() {
-      try {
-    return this.getTotalAmount || 0;
-  } catch (error) {
-    console.error('Error calculating total amount:', error);
-    return 0;
-  }
-},
+    totalAmount() {
+    return this.filteredExpenses.reduce((sum, expense) => {
+      return sum + (Number(expense?.item_price) || 0);
+    }, 0);
+  },
  
      totalInUsd() {
       return this.convertPhpToUsd(this.totalAmount);
@@ -392,9 +389,8 @@ currentBudget() {
       this.loadBudgetForMonth(currentMonthYear)
     ]);
     
-    // Add this line to check initial budget status
     this.checkBudgetStatus();
-    this.monthCheckInterval = setInterval(this.checkMonthChange, 86400000); // 24 hours
+    this.monthCheckInterval = setInterval(this.checkMonthChange, 86400000); 
     } catch (error) {
       console.error("Initialization error:", error);
       this.error = error.message || 'Failed to load data';
