@@ -7,6 +7,18 @@ module.exports = {
       const { item_price, expense_type, item_name, personal_budget_id } = req.body;
       const userId = req.user.userId;
 
+      const budget = await pool.query(
+        'SELECT * FROM personal_budgets WHERE id = ? AND userId = ?',
+        [personal_budget_id, userId]
+      );
+      
+      if (!budget.length) {
+        return res.status(400).json({
+          success: 0,
+          message: "Invalid budget specified"
+        });
+      }
+
       if (!item_price || !expense_type || !item_name) {
         return res.status(400).json({
           success: 0,
