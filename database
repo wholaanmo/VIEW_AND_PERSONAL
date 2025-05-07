@@ -10,6 +10,18 @@ const pool = mysql.createPool({
   connectionLimit: 20,
   acquireTimeout: 60000,  
   queueLimit: 50,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000
 });
+
+pool.getConnection()
+  .then(conn => {
+    console.log('Successfully connected to database');
+    conn.release();
+  })
+  .catch(err => {
+    console.error('Database connection failed:', err);
+    process.exit(1);
+  });
 
 module.exports = pool;
