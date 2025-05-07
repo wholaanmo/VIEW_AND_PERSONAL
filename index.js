@@ -194,31 +194,26 @@ export default createStore({
 
     async fetchBudgetForMonth({ commit }, monthYear) {
       try {
+        console.log('Fetching budget for month:', monthYear);
         const response = await axios.get(`/api/personal-budgets/month/${monthYear}`, {
           headers: { 
             Authorization: `Bearer ${localStorage.getItem('jsontoken')}` 
           }
         });
 
-        if (response.data.success) {
-      // If budget exists, commit it
-      commit('SET_CURRENT_BUDGET', response.data.data);
-      return response.data.data;
-    } else if (response.data.message === "No budget found for this month") {
-      // If no budget exists, return a default one
-      const defaultBudget = {
-        month_year: monthYear,
-        budget_amount: 0
-      };
-      commit('SET_CURRENT_BUDGET', defaultBudget);
-      return defaultBudget;
-    }
-    return null;
-  } catch (error) {
-    console.error('Error fetching budget:', error);
-    return null;
-  }
-},
+        return response.data.data || {
+          month_year: monthYear,
+          budget_amount: 0
+        };
+        
+      } catch (error) {
+        console.error('Error fetching budget:', error);
+        return {
+          month_year: monthYear,
+          budget_amount: 0
+        };
+      }
+    },
 
     async fetchExchangeRate({ commit }) {
       try {
