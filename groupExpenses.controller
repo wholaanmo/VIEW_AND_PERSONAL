@@ -85,21 +85,39 @@ const pool = require('../../config/database');
 };
 
 exports.deleteGroupExpense = async (req, res) => {
-    try {
-      const expenseId = req.params.expenseId || req.params.id;
-      await groupExpenseService.deleteGroupExpense(expenseId);
-      
-      return res.json({
-        success: 1,
-        message: "Expense deleted successfully"
-      });
-    } catch (err) {
-      console.error("Delete error:", err);
-      return res.status(500).json({
+  try {
+    const { expenseId, groupId } = req.params;
+    const userId = req.user.userId;
+
+    // Verify the user has permission to delete this expense
+    const canDelete = await groupExpenseService.canUserEditExpense(userId, expenseId);
+    if (!canDelete) {
+      return res.status(403).json({
         success: 0,
-        message: err.message || "Deletion failed"
+        message: "You don't have permission to delete this expense"
       });
     }
+
+    const result = await groupExpenseService.deleteGroupExpense(expenseId);
+    
+    if (!result) {
+      return res.status(404).json({
+        success: 0,
+        message: "Expense not found"
+      });
+    }
+    
+    return res.json({
+      success: 1,
+      message: "Expense deleted successfully"
+    });
+  } catch (err) {
+    console.error("Delete error:", err);
+    return res.status(500).json({
+      success: 0,
+      message: err.message || "Deletion failed"
+    });
+  }
 };
 
   // Get expenses for a specific group
@@ -124,7 +142,7 @@ exports.deleteGroupExpense = async (req, res) => {
           ge.expense_date,  
           ge.user_id,
           ge.group_id,
-          u.username as user_name
+          u.username
         FROM group_expenses ge
         JOIN users u ON ge.user_id = u.id
         WHERE ge.group_id = ?
