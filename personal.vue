@@ -32,7 +32,7 @@
     <div class="budget-display">
         <div class="budget-header">
           <h3>Budget for {{ formatMonthYear(currentMonthYear) }}</h3>
-          <button v-if="!selectedBudget" @click="showAddBudgetForm" class="btn-add">
+          <button v-if="!hasExistingBudget" @click="showAddBudgetForm" class="btn-add">
             Add Budget
           </button>
           <button v-else @click="showEditBudgetForm" class="btn-edit">
@@ -51,8 +51,20 @@
           
           <div class="budget-amount">
             <span>Budget Amount:</span>
-            <strong>{{ currentBudgetDisplay }}</strong>
+            <strong>{{ formatPHP(currentMonthBudget.budget_amount) }}</strong>
           </div>
+
+          <div class="expenses-amount">
+          <span>Total Expenses:</span>
+          <strong>{{ formatPHP(totalExpensesForMonth) }}</strong>
+          </div>
+
+          <div class="remaining-budget">
+          <span>Remaining Budget:</span>
+          <strong :class="{ 'text-danger': remainingBudget < 0 }">
+            {{ formatPHP(remainingBudget) }}
+          </strong>
+        </div>
           
           <div class="budget-progress">
             <div class="progress-bar">
@@ -257,9 +269,35 @@
     return this.usdExchangeRate || 0.018045;
   },
 
-  currentBudgetForMonth() {
-    return this.$store.getters.getCurrentBudget(this.currentMonthYear);
+  currentMonthExpenses() {
+    return this.filteredExpenses.filter(expense => {
+      const expenseDate = new Date(expense.expense_date);
+      const selectedDate = new Date(this.currentMonthYear);
+      return (
+        expenseDate.getFullYear() === selectedDate.getFullYear() &&
+        expenseDate.getMonth() === selectedDate.getMonth()
+      );
+    });
   },
+  
+  currentMonthBudget() {
+    return this.$store.getters.getCurrentBudget(this.currentMonthYear) || {
+      month_year: this.currentMonthYear,
+      budget_amount: 0
+    };
+  },
+  
+  totalExpensesForMonth() {
+    return this.currentMonthExpenses.reduce((sum, expense) => sum + (Number(expense.item_price) || 0), 0);
+  },
+  
+  remainingBudget() {
+    return (this.currentMonthBudget.budget_amount || 0) - this.totalExpensesForMonth;
+  },
+  
+ // currentBudgetForMonth() {
+ //   return this.$store.getters.getCurrentBudget(this.currentMonthYear);
+ // },
 
   currentBudgetDisplay() {
     if (this.selectedBudget) {
@@ -269,17 +307,11 @@
   },
 
   budgetProgress() {
-  if (!this.selectedBudget || !this.selectedBudget.budget_amount) return 0;
-  
-  const spent = this.totalAmount;
-  const budget = Number(this.selectedBudget.budget_amount);
-  
-  if (budget <= 0) return 0;
-  
-  const progress = (spent / budget) * 100;
-  
-  return Math.min(progress, 100);
-},
+    if (this.currentBudgetAmount <= 0) return 0;
+    
+    const progress = (this.totalExpensesForMonth / this.currentBudgetAmount) * 100;
+    return Math.min(progress, 100);
+  },
 
   shouldShowExpenses() {
     const now = new Date();
@@ -340,7 +372,7 @@ currentBudget() {
   },
      
   hasExistingBudget() {
-    return !!this.currentBudget.id;
+    return !!(this.selectedBudget && this.selectedBudget.id);
   },
 
   isBudgetExceeded() {
@@ -669,14 +701,16 @@ shouldSuggestAlternative(itemName) {
      // Budget Form Methods - REPLACED submitBudget with these two methods
      showAddBudgetForm() {
     this.isAddingBudget = true;
+    this.isEditingBudget = false;
     this.budgetAmount = '';
-    this.newBudgetMonthYear = this.getCurrentMonthYear();
+    this.newBudgetMonthYear = this.currentMonthYear;
   },
 
      
      showEditBudgetForm() {
-       this.isEditingBudget = true;
-       this.budgetAmount = this.currentBudgetAmount;
+      this.isEditingBudget = true;
+      this.isAddingBudget = false;
+      this.budgetAmount = this.selectedBudget.budget_amount;
      },
      
      cancelBudgetForm() {
@@ -687,14 +721,23 @@ shouldSuggestAlternative(itemName) {
      async loadBudgetForMonth(monthYear) {
     this.isBudgetLoading = true;
     try {
-      this.selectedBudget = await this.$store.dispatch('fetchBudgetForMonth', monthYear);
-    } catch (error) {
-      console.error('Error loading budget:', error);
-    } finally {
-      this.isBudgetLoading = false;
-    }
-  },
-
+      const budget = await this.$store.dispatch('fetchBudgetForMonth', monthYear);
+     
+      this.selectedBudget = budget && budget.id ? budget : {
+      month_year: monthYear,
+      budget_amount: 0
+    };
+    
+  } catch (error) {
+    console.error('Error loading budget:', error);
+    this.selectedBudget = {
+      month_year: monthYear,
+      budget_amount: 0
+    };
+  } finally {
+    this.isBudgetLoading = false;
+  }
+},
      async submitAddBudget() {
     try {
       if (!this.budgetAmount) {
@@ -812,15 +855,10 @@ shouldSuggestAlternative(itemName) {
   try {
     if (!this.validateExpenseForm()) return;
 
-    const selectedDate = new Date(this.currentMonthYear);
-    const expenseDate = new Date(
-      selectedDate.getFullYear(),
-      selectedDate.getMonth(),
-      new Date().getDate() // Use current day
-    );
-
-    if (!this.currentBudgetForMonth?.id) {
-      this.showExpenseSuccessMessage('No valid budget selected');
+    const currentBudget = await this.$store.dispatch('fetchBudgetForMonth', this.currentMonthYear);
+    
+    if (!currentBudget?.id) {
+      this.showExpenseSuccessMessage('No budget set for this month');
       return;
     }
 
@@ -828,8 +866,8 @@ shouldSuggestAlternative(itemName) {
       item_price: Number(this.itemPrice), 
       expense_type: this.expenseType === 'Other' ? this.customExpenseType : this.expenseType,
       item_name: this.itemName,
-      personal_budget_id: this.currentBudgetForMonth.id,
-      expense_date: expenseDate.toISOString()
+      personal_budget_id: currentBudget.id, // Link to budget
+      expense_date: new Date().toISOString() // Or use selected date
     };
     
     let result;
