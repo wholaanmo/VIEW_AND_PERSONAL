@@ -114,27 +114,48 @@ module.exports = {
   getExpenses: async (req, res) => {
     try {
       const userId = req.user.userId;
-
-      const [expenses] = await pool.query(
-        `SELECT e.*, pb.month_year 
-         FROM expenses e
-         LEFT JOIN personal_budgets pb ON e.personal_budget_id = pb.id
-         WHERE e.userId = ?
-         ORDER BY e.expense_date DESC`,
-        [userId]
-      );
+      const { monthYear } = req.query;
   
-      return res.json({
-        success: 1,
-        data: expenses
-      });
-    } catch (err) {
-      console.error("Get expenses error:", err);
-      return res.status(500).json({
-        success: 0,
-        message: "Failed to get expenses",
-        error: err.message
-      });
+      let query = `
+        SELECT e.*, pb.month_year 
+        FROM expenses e
+        LEFT JOIN personal_budgets pb ON e.personal_budget_id = pb.id
+        WHERE e.userId = ?
+      `;
+      
+      const params = [userId];
+      
+      if (monthYear) {
+        if (!/^\d{4}-\d{2}$/.test(monthYear)) {
+          return res.status(400).json({
+            success: 0,
+            message: "Invalid monthYear format. Use YYYY-MM"
+          });
+        }
+  
+        const [year, month] = monthYear.split('-');
+      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+      
+      query += ` AND (pb.month_year = ? OR (e.expense_date >= ? AND e.expense_date <= ?))`;
+      params.push(monthYear, startDate, endDate);
     }
+
+    query += ` ORDER BY e.expense_date DESC`;
+
+    const [expenses] = await pool.query(query, params);
+
+    return res.json({
+      success: 1,
+      data: expenses
+    });
+  } catch (err) {
+    console.error("Get expenses error:", err);
+    return res.status(500).json({
+      success: 0,
+      message: "Failed to get expenses",
+      error: err.message
+    });
   }
+}
 };
