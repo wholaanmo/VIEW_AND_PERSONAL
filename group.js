@@ -203,7 +203,7 @@ export default {
               }
             }
           );
-          
+
           if (!res.data.success) {
             throw new Error(res.data.message || 'Failed to update expense');
           }
@@ -216,14 +216,27 @@ export default {
         }
       },
       
-      async deleteExpense({ commit }, expenseId) {
-        try {
-          await axios.delete(`/api/grp_expenses/delete/${expenseId}`);
-          commit('REMOVE_EXPENSE', expenseId);
-        } catch (err) {
-          throw err;
+      async deleteExpense({ commit }, { expenseId, groupId }) {
+          try {
+    const response = await axios.delete(
+      `/api/grp_expenses/${groupId}/expenses/${expenseId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('jsontoken')}`
         }
-      },
+      }
+    );
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Failed to delete expense');
+    }
+    
+    commit('REMOVE_EXPENSE', expenseId);
+    return response.data;
+  } catch (err) {
+    console.error('Delete expense error:', err);
+    throw err;
+  }
+},
       
       async sendInvite({ commit }, { groupId, email }) {
         try {
