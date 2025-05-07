@@ -405,26 +405,9 @@ currentBudget() {
 
 
   watch: {
-  selectedMonthYear: {
+    totalAmount: {
     immediate: true,
-    async handler(newVal, oldVal) {
-      if (newVal !== oldVal) {
-        try {
-          await Promise.all([
-            this.fetchAddExpenses(), 
-            this.fetchPersonalBudgets()
-          ]);
-          this.checkBudgetStatus();
-        } catch (error) {
-          console.error('Error fetching data after month change:', error);
-        }
-      }
-    }
-  },
-  
-  totalAmount: {
-    immediate: true,
-    handler(newVal) {
+    handler() {
       this.checkBudgetStatus();
     }
   },
@@ -435,8 +418,16 @@ currentBudget() {
     handler() {
       this.checkBudgetStatus();
     }
+  },
+  
+  currentMonthYear: {
+    immediate: true,
+    handler() {
+      this.checkBudgetStatus();
+    }
   }
 },
+
    methods: {
      ...mapActions([
        'fetchExchangeRate',
@@ -617,36 +608,31 @@ shouldSuggestAlternative(itemName) {
   },
 
   checkBudgetStatus(forceShow = false) {
-    const budget = this.currentBudgetForMonth;
-    if (!budget?.budget_amount) {
+    if (!forceShow) {
+    this.showBudgetExceededAlert = false;
+  }
+
+   const budget = this.currentBudget;
+  if (!budget?.budget_amount || budget.budget_amount <= 0) {
     this.showBudgetExceededAlert = false;
     return;
   }
 
-    const currentMonthYear = this.getCurrentMonthYear();
+  const currentMonthYear = this.getCurrentMonthYear();
+  if (this.lastCheckedMonthYear !== currentMonthYear) {
+    this.alertDismissed = false;
+    localStorage.removeItem('budgetAlertDismissed');
+    this.lastCheckedMonthYear = currentMonthYear;
+  }
 
-    if (this.lastCheckedMonthYear !== currentMonthYear) {
-      this.alertDismissed = false;
-      localStorage.removeItem('budgetAlertDismissed');
-      this.lastCheckedMonthYear = currentMonthYear;
-    }
+  const isExceeded = this.totalAmount > Number(budget.budget_amount);
 
-    const isExceeded = this.totalAmount > Number(this.currentBudget.budget_amount);
-
-    if (isExceeded) {
-      if (forceShow) {
-        this.alertDismissed = false;
-        localStorage.removeItem('budgetAlertDismissed');
-      }
-
-      if (!this.alertDismissed) {
-        this.showBudgetExceededAlert = true;
-        return;
-      }
-    }
-
+  if (isExceeded && (forceShow || !this.alertDismissed)) {
+    this.showBudgetExceededAlert = true;
+  } else {
     this.showBudgetExceededAlert = false;
-  },
+  }
+},
   
      getCurrentMonthYear() {
       const now = new Date();
@@ -961,6 +947,7 @@ async deleteExpenseHandler(id) {
     this.deleteExpense(id).then(result => {
       if (result.success) {
         this.showExpenseSuccessMessage('Expense deleted successfully!');
+        this.checkBudgetStatus(true)
       } else {
         this.showExpenseSuccessMessage(result.message || 'Failed to delete expense');
       }
