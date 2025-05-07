@@ -85,5 +85,17 @@ module.exports = {
     } catch (err) {
       throw err;
     }
+  },
+  getBudgetByMonth: async (userId, month_year) => {
+    try {
+      const [results] = await pool.query(
+        `SELECT * FROM personal_budgets 
+         WHERE user_id = ? AND month_year = ?`,
+        [userId, month_year]
+      );
+      return results[0] || null;
+    } catch (err) {
+      throw err;
+    }
   }
 };
