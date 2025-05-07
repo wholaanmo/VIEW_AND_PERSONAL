@@ -259,12 +259,12 @@ export default createStore({
     async fetchAddExpenses({ commit, state }) {
       try {
         const response = await axios.get('/api/expenses', {
-          headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
-          params: {
-            monthYear: state.addExpenseMonthYear
-          }
+          headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` }
         });
-        commit('SET_ADD_EXPENSES', response.data.data || [])
+
+        console.log('API Response:', response.data); 
+
+        commit('SET_ADD_EXPENSES', response.data.data || []);
         return { success: true }
       } catch (error) {
         console.error("Error fetching add expenses:", error)
@@ -272,6 +272,7 @@ export default createStore({
         return { success: false, message: error.message }
       }
     },
+
     async fetchPersonalBudgets({ commit }, monthYear = null) {
       try {
         const params = monthYear ? { month_year: monthYear } : {};
