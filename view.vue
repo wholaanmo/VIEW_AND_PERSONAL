@@ -262,13 +262,22 @@ export default {
     },
 
     filteredExpenses() {
-      return this.expenses.filter(expense => {
-        const categoryMatch = this.filterCategory === 'all' || expense.category === this.filterCategory;
-        const monthMatch = !this.selectedMonth || 
-          (expense.date && expense.date.startsWith(`${this.selectedYear}-${this.selectedMonth}`));
-        return categoryMatch && monthMatch;
-      });
-    },
+      return (this.getViewExpenses || []).map(expense => ({
+      ...expense,
+      category: expense.expense_type,
+      name: expense.item_name,
+      amount: Number(expense.item_price),
+      date: this.formatDateForView(expense.expense_date)
+    }));
+  },
+
+  currentBudget() {
+    const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
+    return this.$store.getters.getCurrentBudget(monthYear) || {
+      month_year: monthYear,
+      budget_amount: 0
+    };
+  },
 
     totalAmount() {
       return this.filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -339,10 +348,17 @@ export default {
     },
 
     updateSelectedMonthYear() {
-    const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
-    this.$store.commit('SET_VIEW_PAGE_MONTH_YEAR', monthYear);
-    this.fetchViewExpenses();
-  },
+  const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
+  this.$store.commit('SET_VIEW_PAGE_MONTH_YEAR', monthYear);
+  
+  this.$store.dispatch('fetchViewExpenses', monthYear)
+    .then(() => {
+      console.log('Successfully fetched expenses for:', monthYear);
+    })
+    .catch((error) => {
+      console.error('Error fetching expenses:', error);
+    });
+},
     
     formatCurrency(value) {
       if (value == null || isNaN(value)) return '₱0.00';
