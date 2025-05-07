@@ -12,6 +12,7 @@ export default createStore({
     expenses: [],
     personalBudgets: [],
     usdExchangeRate: 56.50,
+    selectedMonthYear: null ,
     viewPageMonthYear: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'), // For view page
     addExpenseMonthYear: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'), // For add expense page
     currentSelectedMonth: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'),
@@ -59,26 +60,22 @@ export default createStore({
     },
     getCurrentBudget: (state) => (monthYear) => {
       try {
-        if (!state.personalBudgets || !Array.isArray(state.personalBudgets)) {
-          return { 
-            budget_amount: 0,
-            month_year: monthYear
-          };
-        }
-        return state.personalBudgets.find(
+        const budget = state.personalBudgets.find(
           b => b.month_year === monthYear
-        ) || { 
-          budget_amount: 0,
-          month_year: monthYear
+        );
+
+        return budget || { 
+          month_year: monthYear,
+          budget_amount: 0
         };
       } catch (error) {
         console.error("Error in getCurrentBudget:", error);
         return { 
-          budget_amount: 0,
-          month_year: monthYear
+          month_year: monthYear,
+          budget_amount: 0
         };
       }
-    }, 
+    },
 
     getAvailableMonths: () => {
       const months = []
@@ -93,8 +90,13 @@ export default createStore({
     }
   },
   mutations: {
-    SET_CURRENT_MONTH(state, monthYear) {
-      state.currentSelectedMonth = monthYear;
+    SET_CURRENT_BUDGET(state, budget) {
+      const index = state.personalBudgets.findIndex(b => b.month_year === budget.month_year);
+      if (index !== -1) {
+        state.personalBudgets.splice(index, 1, budget);
+      } else {
+        state.personalBudgets.push(budget);
+      }
     },
     SET_VIEW_EXPENSES(state, expenses) {
       state.viewExpenses = expenses
@@ -189,6 +191,35 @@ export default createStore({
     setSelectedMonthYear({ commit }, monthYear) {
       commit('SET_SELECTED_MONTH_YEAR', monthYear);
     },
+
+    async fetchBudgetForMonth({ commit }, monthYear) {
+      try {
+        const response = await axios.get(`/api/personal-budgets/month/${monthYear}`, {
+          headers: { 
+            Authorization: `Bearer ${localStorage.getItem('jsontoken')}` 
+          }
+        });
+
+        if (response.data.success) {
+      // If budget exists, commit it
+      commit('SET_CURRENT_BUDGET', response.data.data);
+      return response.data.data;
+    } else if (response.data.message === "No budget found for this month") {
+      // If no budget exists, return a default one
+      const defaultBudget = {
+        month_year: monthYear,
+        budget_amount: 0
+      };
+      commit('SET_CURRENT_BUDGET', defaultBudget);
+      return defaultBudget;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching budget:', error);
+    return null;
+  }
+},
+
     async fetchExchangeRate({ commit }) {
       try {
         const response = await axios.get('https://api.exchangerate.host/latest?base=PHP&symbols=USD')
