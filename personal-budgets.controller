@@ -88,18 +88,23 @@ module.exports = {
   getBudgets: async (req, res) => {
     try {
       const userId = req.user.userId;
-      const results = await budgetService.getBudgetsByUser(userId);
+      const { year } = req.query;
+  
+      const results = await budgetService.getBudgetsByUser(userId, year);
+  
       return res.json({
         success: 1,
         data: results
       });
     } catch (err) {
+      console.error("Get budgets error:", err);
       return res.status(500).json({
         success: 0,
-        message: "Database error"
+        message: err.message || "Database error"
       });
     }
   },
+
   getBudgetByMonth: async (req, res) => {
     try {
       console.log('Received request for month:', req.params.month_year);
