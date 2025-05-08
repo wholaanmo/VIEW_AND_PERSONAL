@@ -241,7 +241,8 @@ export default createStore({
     
     async fetchViewExpenses({ commit, state }, { monthYear = null, year = null } = {}) {
       try {
-        const params = monthYear ? { monthYear } : {};
+        const params = {};
+
         if (monthYear) {
           const budget = await this.dispatch('fetchBudgetForMonth', monthYear);
           if (budget?.id) {
@@ -251,7 +252,8 @@ export default createStore({
         
         if (year) {
           params.year = year;
-        }
+          await this.dispatch('fetchPersonalBudgets', year);
+    }
         const response = await axios.get('/api/expenses', {
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
           params
@@ -282,19 +284,35 @@ export default createStore({
       }
     },
 
-    async fetchPersonalBudgets({ commit }, monthYear = null) {
+    async fetchPersonalBudgets({ commit }, filter = null) {
       try {
-        const params = monthYear ? { month_year: monthYear } : {};
+        let params = {};
+        
+        if (filter) {
+          if (/^\d{4}$/.test(filter)) {
+            params = { year: filter };
+          } 
+          else if (/^\d{4}-\d{2}$/.test(filter)) {
+            params = { month_year: filter };
+          } else {
+            throw new Error('Invalid filter format. Use YYYY or YYYY-MM');
+          }
+        }
+    
         const response = await axios.get('/api/personal-budgets', {
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
           params
         });
+        
         commit('SET_PERSONAL_BUDGETS', response.data.data || []);
         return { success: true };
       } catch (error) {
         console.error("Error fetching budgets:", error);
         commit('SET_PERSONAL_BUDGETS', []);
-        return { success: false, message: error.message };
+        return { 
+          success: false, 
+          message: error.response?.data?.message || error.message 
+        };
       }
     },
 
