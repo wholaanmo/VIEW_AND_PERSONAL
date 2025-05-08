@@ -59,8 +59,12 @@
 
         <!-- Expense Table -->
         <div class="expense-table">
-            <h3 v-if="!showYearFilter">Expenses for {{ availableMonths.find(m => m.value === selectedMonth)?.label }} {{ selectedYear }}</h3>
-            <h3 v-else>Expenses for {{ yearFilter }}</h3>
+          <h3 v-if="!showYearFilter">Expenses for  {{ availableMonths.find(m => m.value === selectedMonth)?.label }} {{ selectedYear }}
+          <span class="category-label">&nbsp;({{ filterCategory === 'all' ? 'All Categories' : filterCategory }})</span>
+        </h3>
+          <h3 v-else>Expenses for  {{ yearFilter }}
+            <span class="category-label">&nbsp;({{ filterCategory === 'all' ? 'All Categories' : filterCategory }})</span>
+        </h3>
           <table>
             <thead>
               <tr>
@@ -118,7 +122,7 @@
         </div>
       </div>
 
-      <div v-if="showYearFilter" class="summary-box">
+  <div v-if="showYearFilter" class="summary-box">
   <h3>Annual Summary for {{ yearFilter }}</h3>
     <div class="summary-item">
       <span>Total Budget:</span>
@@ -126,24 +130,24 @@
     </div>
     
     <div class="summary-item">
-      <span>Total Expenses:</span>
-      <span>{{ formatCurrency(yearlyExpensesTotal) }}</span>
-    </div>
+  <span>{{ filterCategory === 'All' ? 'Expenses' : filterCategory + ' Expenses' }}:</span>
+  <span>{{ formatCurrency(yearlyExpensesByCategory) }}</span>
+</div>
     
     <div class="summary-item remaining">
-      <span>Remaining:</span>
-      <span :class="{ 'negative': yearlyRemainingBudget < 0 }">
-        {{ formatCurrency(yearlyRemainingBudget) }}
-      </span>
-    </div>
-
-  <div class="progress-bar">
-      <div class="progress" :style="{ width: yearlyBudgetPercentage + '%' }"></div>
-    </div>
-    <div class="percentage">{{ yearlyBudgetPercentage.toFixed(0) }}%</div>
+    <span>Remaining Budget:</span>
+    <span :class="{ 'negative': yearlyRemainingByCategory < 0 }">
+      {{ formatCurrency(yearlyRemainingByCategory) }}
+    </span>
   </div>
 
+  <div class="progress-bar">
+    <div class="progress" :style="{ width: yearlyBudgetPercentageByCategory + '%' }"></div>
+  </div>
+  <div class="percentage">{{ yearlyBudgetPercentageByCategory.toFixed(0) }}%</div>
+</div>
 
+      <!--MONTHLY-->
       <div v-else class="summary-box">
     <h3>Budget Summary</h3>
     <div class="summary-item">
@@ -152,12 +156,12 @@
     </div>
 
     <div class="summary-item">
-      <span>Spent:</span>
-      <span>{{ formatCurrency(totalAmount) }}</span>
-    </div>
+    <span>{{ filterCategory === 'All' ? 'Expenses' : filterCategory + ' Expenses' }}:</span>
+  <span>{{ formatCurrency(totalAmount) }}</span>
+</div>
 
     <div class="summary-item remaining">
-      <span>Remaining:</span>
+      <span>Remaining Budget:</span>
       <span :class="{ 'negative': remainingBudget < 0 }">
         {{ formatCurrency(remainingBudget) }}
       </span>
@@ -170,13 +174,12 @@
   </div>
   </div>
 
-
 <div v-if="isBudgetExceeded && !showYearFilter" class="exceeded-warning">
   ⚠️ Monthly budget exceeded by {{ formatCurrency(totalAmount - currentBudget.budget_amount) }}
 </div>
 
-<div v-if="isYearlyBudgetExceeded && showYearFilter" class="exceeded-warning">
-  ⚠️ Annual budget exceeded by {{ formatCurrency(yearlyExpensesTotal - yearlyBudgetsTotal) }}
+<div v-if="showYearFilter && isYearlyBudgetExceeded" class="exceeded-warning">
+  ⚠️ Annual budget {{ filterCategory !== 'all' ? `(${filterCategory}) ` : '' }}exceeded by {{ formatCurrency(yearlyExpensesByCategory - yearlyBudgetsTotal) }}
 </div>
 </div>
 </template>
@@ -257,6 +260,27 @@ export default {
 
   computed: {
     ...mapGetters(['getViewExpenses', 'getPersonalBudgets', 'getViewPageMonthYear']),
+    
+    yearlyExpensesByCategory() {
+  if (!this.showYearFilter || !this.yearFilter) return 0; 
+  return this.getViewExpenses.reduce((sum, expense) => {
+
+    const matchesCategory = this.filterCategory === 'all' || 
+                          expense.expense_type === this.filterCategory;
+    
+    return matchesCategory ? sum + (Number(expense.item_price) || 0) : sum;
+  }, 0);
+},
+    
+  yearlyRemainingByCategory() {
+    return this.yearlyBudgetsTotal - this.yearlyExpensesByCategory;
+  },
+
+  yearlyBudgetPercentageByCategory() {
+    if (!this.yearlyBudgetsTotal) return 0;
+    return Math.min(100, (this.yearlyExpensesByCategory / this.yearlyBudgetsTotal) * 100);
+  },
+
     yearlyExpensesTotal() {
     if (!this.showYearFilter || !this.yearFilter) return 0;
     return this.getViewExpenses.reduce((sum, expense) => {
@@ -264,7 +288,7 @@ export default {
     }, 0);
   },
 
-  // Calculate sum of all monthly budgets for the year
+
   yearlyBudgetsTotal() {
     if (!this.showYearFilter || !this.yearFilter) return 0;
     return this.getPersonalBudgets.reduce((sum, budget) => {
@@ -288,7 +312,7 @@ export default {
 
   // Check if yearly budget is exceeded
   isYearlyBudgetExceeded() {
-    return this.yearlyExpensesTotal > this.yearlyBudgetsTotal;
+    return this.yearlyExpensesByCategory > this.yearlyBudgetsTotal;
   },
 
     availableYears() {
@@ -418,7 +442,6 @@ export default {
     );
   }
 
-  // Apply category filter
   if (this.filterCategory && this.filterCategory !== 'all') {
     expenses = expenses.filter(expense => 
       expense.expense_type.toLowerCase() === this.filterCategory.toLowerCase()
@@ -671,6 +694,7 @@ updateExpenseView() {
 
 
 <style scoped>
+
 .no-expenses-message {
   justify-content: center;   
   align-items: center;                 
@@ -809,7 +833,7 @@ updateExpenseView() {
   color: #ffffff;
   font-size: 20px;
   text-align: center;
-  width: 100%; /* avoids overflowing if parent is small */
+  width: 100%; 
   box-sizing: border-box;
 }
 
