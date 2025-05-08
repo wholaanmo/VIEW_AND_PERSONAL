@@ -114,8 +114,17 @@ module.exports = {
   getExpenses: async (req, res) => {
     try {
       const userId = req.user.userId;
-      const { monthYear } = req.query;
+      const { monthYear, personal_budget_id, year } = req.query;
   
+      // Validate at least one filter parameter is provided
+      if (!monthYear && !personal_budget_id && !year) {
+        return res.status(400).json({
+          success: 0,
+          message: "Either monthYear, personal_budget_id, or year parameter is required"
+        });
+      }
+  
+      // Base query
       let query = `
         SELECT e.*, pb.month_year 
         FROM expenses e
@@ -125,7 +134,19 @@ module.exports = {
       
       const params = [userId];
       
-      if (monthYear) {
+      // Add filters based on provided parameters
+      if (personal_budget_id) {
+        // Filter by specific budget ID
+        query += ` AND e.personal_budget_id = ?`;
+        params.push(personal_budget_id);
+      } 
+      else if (year) {
+        // Filter by entire year (e.g. 2025)
+        query += ` AND pb.month_year LIKE ?`;
+        params.push(`${year}-%`);
+      }
+      else if (monthYear) {
+        // Filter by specific month (e.g. 2025-07)
         if (!/^\d{4}-\d{2}$/.test(monthYear)) {
           return res.status(400).json({
             success: 0,
@@ -134,28 +155,29 @@ module.exports = {
         }
   
         const [year, month] = monthYear.split('-');
-      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
-      
-      query += ` AND (pb.month_year = ? OR (e.expense_date >= ? AND e.expense_date <= ?))`;
-      params.push(monthYear, startDate, endDate);
+        const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+        
+        query += ` AND (pb.month_year = ? OR (e.expense_date >= ? AND e.expense_date <= ?))`;
+        params.push(monthYear, startDate, endDate);
+      }
+  
+      // Default ordering
+      query += ` ORDER BY e.expense_date DESC`;
+  
+      const [expenses] = await pool.query(query, params);
+  
+      return res.json({
+        success: 1,
+        data: expenses
+      });
+    } catch (err) {
+      console.error("Get expenses error:", err);
+      return res.status(500).json({
+        success: 0,
+        message: "Failed to get expenses",
+        error: err.message
+      });
     }
-
-    query += ` ORDER BY e.expense_date DESC`;
-
-    const [expenses] = await pool.query(query, params);
-
-    return res.json({
-      success: 1,
-      data: expenses
-    });
-  } catch (err) {
-    console.error("Get expenses error:", err);
-    return res.status(500).json({
-      success: 0,
-      message: "Failed to get expenses",
-      error: err.message
-    });
   }
-}
 };
