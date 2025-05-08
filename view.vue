@@ -262,14 +262,22 @@ export default {
     },
 
     filteredExpenses() {
-      return (this.getViewExpenses || []).map(expense => ({
-      ...expense,
-      category: expense.expense_type,
-      name: expense.item_name,
-      amount: Number(expense.item_price),
-      date: this.formatDateForView(expense.expense_date)
-    }));
-  },
+      let expenses = (this.getViewExpenses || []).map(expense => ({
+    ...expense,
+    category: expense.expense_type,
+    name: expense.item_name,
+    amount: Number(expense.item_price),
+    date: this.formatDateForView(expense.expense_date)
+  }));
+
+  if (this.filterCategory && this.filterCategory !== 'all') {
+    expenses = expenses.filter(expense => 
+      expense.category.toLowerCase() === this.filterCategory.toLowerCase()
+    );
+  }
+
+  return expenses;
+},
 
   currentBudget() {
     const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
@@ -392,7 +400,14 @@ export default {
     
     doc.setFontSize(12);
     const monthName = this.availableMonths.find(m => m.value === this.selectedMonth)?.label || '';
-    doc.text(`Period: ${monthName} ${this.selectedYear}`, 105, 30, { align: 'center' });
+    let periodText = `Period: ${monthName} ${this.selectedYear}`;
+      
+      // Add category filter info if not 'all'
+      if (this.filterCategory && this.filterCategory !== 'all') {
+        periodText += ` (${this.filterCategory} only)`;
+      }
+      
+      doc.text(periodText, 105, 30, { align: 'center' });
     
     // Budget summary
     doc.setFontSize(12);
@@ -401,9 +416,7 @@ export default {
     doc.text(`Total Expenses: ${this.formatCurrency(this.totalAmount)}`, 165, 45, { align: 'center' });
     doc.text(`Remaining: ${this.formatCurrency(this.remainingBudget)}`, 128, 55, { align: 'right' });
     
-    const pdfExpenses = this.expenses.filter(expense => {
-      return expense.date && expense.date.startsWith(`${this.selectedYear}-${this.selectedMonth}`);
-    });
+    const pdfExpenses = this.filteredExpenses;
     
     // Prepare table data
     const tableData = pdfExpenses.map(expense => [
