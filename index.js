@@ -239,17 +239,19 @@ export default createStore({
       }
     },
     
-    async fetchViewExpenses({ commit, state }, monthYear = null) {
+    async fetchViewExpenses({ commit, state }, { monthYear = null, year = null } = {}) {
       try {
         const params = monthYear ? { monthYear } : {};
-        const budget = await this.dispatch('fetchBudgetForMonth', 
-        monthYear || state.viewPageMonthYear
-      );
-      
-      if (!budget?.id) {
-        commit('SET_VIEW_EXPENSES', []);
-        return { success: true };
-      }
+        if (monthYear) {
+          const budget = await this.dispatch('fetchBudgetForMonth', monthYear);
+          if (budget?.id) {
+            params.personal_budget_id = budget.id;
+          }
+        }
+        
+        if (year) {
+          params.year = year;
+        }
         const response = await axios.get('/api/expenses', {
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
           params
