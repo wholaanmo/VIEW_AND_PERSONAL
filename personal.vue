@@ -84,25 +84,26 @@
         <!-- Budget Form Modal -->
         <div v-if="isAddingBudget || isEditingBudget" class="budget-form-modal">
           <div class="budget-form">
-            <h3>{{ isEditingBudget ? 'Edit' : 'Add' }} Budget</h3>
-            <div class="form-group">
+            <h3 class="form-title">{{ isEditingBudget ? 'EDIT' : 'ADD' }} BUDGET</h3>
+            <div class="form-group1">
               <label>Month:</label>
               <input 
         v-if="isAddingBudget"
-        type="month" 
-        v-model="newBudgetMonthYear"
-        :min="getCurrentMonthYear()"
-        required
-      >
+          type="text" 
+          :value="formatMonthYear(currentMonthYear)" 
+          class="form-input"
+          disabled
+        >
       <input 
         v-else
         type="text" 
-        :value="formatMonthYear(currentMonthYear)" 
-        disabled
-      >
+          :value="formatMonthYear(currentMonthYear)" 
+          class="form-input"
+          disabled
+        >
             </div>
 
-            <div class="form-group">
+            <div class="form-group1">
               <label>Budget Amount (₱):</label>
               <input 
                 type="text" 
@@ -121,7 +122,8 @@
         </div>
       </div>
     </div>
-  </div>
+    </div>
+
 
   <!--ADDING EXPENSESSSS-->
     <div class="content-wrapper">
@@ -170,7 +172,10 @@
            <input type="number" v-model.number="itemPrice" placeholder="Enter item price" required step="0.01" />
          </div>
  
-         <button class="btn" type="submit">{{ editId ? 'Update Expense' : 'Add Expense' }}</button>
+         <button class="btn" type="submit"   :disabled="!hasBudgetForCurrentMonth">{{ editId ? 'Update Expense' : 'Add Expense' }}</button>
+         <div v-if="!hasBudgetForCurrentMonth" class="no-budget-warning">
+         <p>Please create a budget for {{ formatMonthYear(currentMonthYear) }} before adding expenses</p>
+        </div>
          <div v-if="expenseSuccessMessage" class="expense-success-message" :class="{ hide: expenseHideMessage }">{{ expenseSuccessMessage }}</div>
       </form>
 
@@ -267,6 +272,10 @@
     ...mapState(['addExpenses', 'personalBudgets', 'usdExchangeRate']),
   ...mapGetters(['getTotalAmount', 'getCurrentBudget', 'getAvailableMonths', 'getAddExpenseMonthYear']),
   
+  hasBudgetForCurrentMonth() {
+    return this.currentMonthBudget?.budget_amount > 0;
+  },
+
   safeExchangeRate() {
     return this.usdExchangeRate || 0.018045;
   },
@@ -827,6 +836,11 @@ shouldSuggestAlternative(itemName) {
      // Expense Methods
   async handleSubmit() {
   try {
+    if (!this.hasBudgetForCurrentMonth) {
+      this.showExpenseSuccessMessage('Please create a budget for this month before adding expenses');
+      return;
+    }
+
     if (!this.validateExpenseForm()) return;
 
     const currentMonthYear = this.currentMonthYear;
@@ -1021,6 +1035,16 @@ async deleteExpenseHandler(id) {
 
  
 <style scoped>
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.no-budget-warning {
+  color: #dc3545;
+  margin-top: 10px;
+  font-size: 0.9em;
+}
 .text-danger {
   color: #dc3545; 
 }
@@ -1474,7 +1498,7 @@ async deleteExpenseHandler(id) {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0,0,0,0.5);
+  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -1493,25 +1517,41 @@ async deleteExpenseHandler(id) {
 .form-actions {
   display: flex;
   justify-content: flex-end;
+  margin-top: 20px;
   gap: 10px;
 }
 
 .btn-save, .btn-cancel {
-  padding: 8px 16px;
-  border-radius: 5px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+  text-align: center;
 }
 
 .btn-save {
-  background-color: #4CAF50;
+  background-color: #537D5D;
   color: white;
   border: none;
 }
 
+.btn-save:hover {
+  background-color: #73946B;
+  transform: translateY(-1px);
+}
+
 .btn-cancel {
-  background-color: #f44336;
-  color: white;
-  border: none;
+  background-color: #f5f5f5;
+  color: #666;
+  border: 1px solid #ddd;
+}
+
+.btn-cancel:hover {
+  background-color: #e0e0e0;
+  transform: translateY(-1px);
 }
 
 .loading {
@@ -1716,14 +1756,56 @@ td, th {
      margin-top: -20px;
 }
 
- 
+.form-title {
+  color: #2a4935;
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.form-group1 {
+  margin-bottom: 16px;
+}
+
+.form-group1 label {
+  margin-bottom: 6px;
+  color: #2a4935;
+  font-size: 1.1rem;
+  font-weight: 500;
+  text-align: left;
+  margin-left: 2px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #c8e6c9;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  color: #333;
+  background-color: #f8f8f8;
+  transition: all 0.3s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #4caf50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+  background-color: white;
+}
+
+.form-input[disabled] {
+  background-color: #f0f0f0;
+  color: #666;
+}
  .form-group {
-     margin-bottom: 20px;
+     margin-bottom: 16px;
      margin-top: 20px;
  }
  
  label {
-     margin-left: 10px;
+     margin-left: 25px;
      text-align: left;
      display: block;
      margin-bottom: 5px;
