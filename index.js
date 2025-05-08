@@ -242,6 +242,14 @@ export default createStore({
     async fetchViewExpenses({ commit, state }, monthYear = null) {
       try {
         const params = monthYear ? { monthYear } : {};
+        const budget = await this.dispatch('fetchBudgetForMonth', 
+        monthYear || state.viewPageMonthYear
+      );
+      
+      if (!budget?.id) {
+        commit('SET_VIEW_EXPENSES', []);
+        return { success: true };
+      }
         const response = await axios.get('/api/expenses', {
           headers: { Authorization: `Bearer ${localStorage.getItem('jsontoken')}` },
           params
