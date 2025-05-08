@@ -108,34 +108,67 @@
         </div>
       </div>
 
-      <div class="summary-box">
+      <div v-if="showYearFilter" class="summary-box">
+  <h3>Annual Summary for {{ yearFilter }}</h3>
+    <div class="summary-item">
+      <span>Total Budget:</span>
+      <span>{{ formatCurrency(yearlyBudgetsTotal) }}</span>
+    </div>
+    
+    <div class="summary-item">
+      <span>Total Expenses:</span>
+      <span>{{ formatCurrency(yearlyExpensesTotal) }}</span>
+    </div>
+    
+    <div class="summary-item remaining">
+      <span>Remaining:</span>
+      <span :class="{ 'negative': yearlyRemainingBudget < 0 }">
+        {{ formatCurrency(yearlyRemainingBudget) }}
+      </span>
+    </div>
+
+  <div class="progress-bar">
+      <div class="progress" :style="{ width: yearlyBudgetPercentage + '%' }"></div>
+    </div>
+    <div class="percentage">{{ yearlyBudgetPercentage.toFixed(0) }}%</div>
+  </div>
+
+
+      <div v-else class="summary-box">
     <h3>Budget Summary</h3>
     <div class="summary-item">
       <span>Budget:</span>
       <span>{{ formatCurrency(currentBudget?.budget_amount || 0) }}</span>
     </div>
+
     <div class="summary-item">
       <span>Spent:</span>
       <span>{{ formatCurrency(totalAmount) }}</span>
     </div>
+
     <div class="summary-item remaining">
       <span>Remaining:</span>
       <span :class="{ 'negative': remainingBudget < 0 }">
         {{ formatCurrency(remainingBudget) }}
       </span>
     </div>
+
     <div class="progress-bar">
       <div class="progress" :style="{ width: budgetPercentage + '%' }"></div>
     </div>
     <div class="percentage">{{ budgetPercentage.toFixed(0) }}%</div>
   </div>
-</div>
-</div>
-
-<div v-if="isBudgetExceeded" class="exceeded-warning">
-    ⚠️ Budget exceeded by {{ formatCurrency(totalAmount - currentBudget.budget_amount) }}
   </div>
 
+
+<div v-if="isBudgetExceeded && !showYearFilter" class="exceeded-warning">
+  ⚠️ Monthly budget exceeded by {{ formatCurrency(totalAmount - currentBudget.budget_amount) }}
+</div>
+
+<div v-if="isYearlyBudgetExceeded && showYearFilter" class="exceeded-warning">
+  ⚠️ Annual budget exceeded by {{ formatCurrency(yearlyExpensesTotal - yearlyBudgetsTotal) }}
+</div>
+</div>
 </template>
 
 
@@ -214,6 +247,39 @@ export default {
 
   computed: {
     ...mapGetters(['getViewExpenses', 'getPersonalBudgets', 'getViewPageMonthYear']),
+    yearlyExpensesTotal() {
+    if (!this.showYearFilter || !this.yearFilter) return 0;
+    return this.getViewExpenses.reduce((sum, expense) => {
+      return sum + (Number(expense.item_price) || 0);
+    }, 0);
+  },
+
+  // Calculate sum of all monthly budgets for the year
+  yearlyBudgetsTotal() {
+    if (!this.showYearFilter || !this.yearFilter) return 0;
+    return this.getPersonalBudgets.reduce((sum, budget) => {
+      if (budget.month_year && budget.month_year.startsWith(this.yearFilter)) {
+        return sum + (Number(budget.budget_amount) || 0);
+      }
+      return sum;
+    }, 0);
+  },
+
+  // Calculate remaining budget for the year
+  yearlyRemainingBudget() {
+    return this.yearlyBudgetsTotal - this.yearlyExpensesTotal;
+  },
+
+  // Calculate budget percentage for the year
+  yearlyBudgetPercentage() {
+    if (!this.yearlyBudgetsTotal) return 0;
+    return Math.min(100, (this.yearlyExpensesTotal / this.yearlyBudgetsTotal) * 100);
+  },
+
+  // Check if yearly budget is exceeded
+  isYearlyBudgetExceeded() {
+    return this.yearlyExpensesTotal > this.yearlyBudgetsTotal;
+  },
 
     availableYears() {
   const years = new Set();
@@ -492,8 +558,13 @@ updateExpenseView() {
     doc.text('Expense Report', 105, 20, { align: 'center' });
     
     doc.setFontSize(12);
-    const monthName = this.availableMonths.find(m => m.value === this.selectedMonth)?.label || '';
-    let periodText = `Period: ${monthName} ${this.selectedYear}`;
+    let periodText;
+    if (this.showYearFilter) {
+      periodText = `Period: Year ${this.yearFilter}`;
+    } else {
+      const monthName = this.availableMonths.find(m => m.value === this.selectedMonth)?.label || '';
+      periodText = `Period: ${monthName} ${this.selectedYear}`;
+    }
       
       // Add category filter info if not 'all'
       if (this.filterCategory && this.filterCategory !== 'all') {
@@ -505,9 +576,17 @@ updateExpenseView() {
     // Budget summary
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Budget: ${this.formatCurrency(this.currentBudget?.budget_amount || 0)}`, 20, 45);
-    doc.text(`Total Expenses: ${this.formatCurrency(this.totalAmount)}`, 165, 45, { align: 'center' });
-    doc.text(`Remaining: ${this.formatCurrency(this.remainingBudget)}`, 128, 55, { align: 'right' });
+    if (this.showYearFilter) {
+      // Year view summary
+      doc.text(`Total Budget: ${this.formatCurrency(this.yearlyBudgetsTotal)}`, 20, 45);
+      doc.text(`Total Expenses: ${this.formatCurrency(this.yearlyExpensesTotal)}`, 165, 45, { align: 'center' });
+      doc.text(`Remaining: ${this.formatCurrency(this.yearlyRemainingBudget)}`, 128, 55, { align: 'right' });
+    } else {
+      // Month view summary
+      doc.text(`Budget: ${this.formatCurrency(this.currentBudget?.budget_amount || 0)}`, 20, 45);
+      doc.text(`Total Expenses: ${this.formatCurrency(this.totalAmount)}`, 165, 45, { align: 'center' });
+      doc.text(`Remaining: ${this.formatCurrency(this.remainingBudget)}`, 128, 55, { align: 'right' });
+    }
     
     const pdfExpenses = this.filteredExpenses;
     
@@ -523,10 +602,10 @@ updateExpenseView() {
     autoTable(doc, {
   head: [['Date', 'Category', 'Description', 'Amount']],
   body: tableData,
-  startY: 70, // Lower starting position
+  startY: 70, 
   margin: { left: 10, right: 10 },
   styles: {
-    cellPadding: 4, // Reduced padding
+    cellPadding: 4, 
     fontSize: 9,
     halign: 'left',
     valign: 'middle',
@@ -685,20 +764,22 @@ updateExpenseView() {
 }
 
 .exceeded-warning {
+  margin-top: 0px !important;
   background-color: #e53935;
-  border-left: 4px solid #b71c1c;
-  padding: 10px 15px;
-  margin: 10px auto; /* vertically space + center horizontally */
-  margin-inline: 30px; /* adds left and right margin */
+  border-left: 6px solid #b71c1c;
+  border-right: 6px solid #b71c1c;
+  padding: 14px 20px;
+  margin: 20px auto; /* vertically space + center horizontally */
+  margin-inline: 30px; 
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
   color: #ffffff;
-  font-size: 18px;
+  font-size: 20px;
   text-align: center;
-  max-width: 100%; /* avoids overflowing if parent is small */
+  width: 100%; /* avoids overflowing if parent is small */
   box-sizing: border-box;
 }
 
@@ -711,7 +792,7 @@ updateExpenseView() {
   border-radius: 20px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
   font-size: 16px;
-  margin: 2px 0 6px 0; /* Liit ang top margin to 2px */
+  margin: 2px 0 6px 0; 
   text-align: center;
   color: #000000;
   min-width: 280px;
@@ -720,7 +801,7 @@ updateExpenseView() {
 
 .progress-bar {
   width: 100%;
-  height: 9px; /* Smaller progress bar height */
+  height: 9px;
   background-color: #e0e0e0;
   border-radius: 4px;
   overflow: hidden;
