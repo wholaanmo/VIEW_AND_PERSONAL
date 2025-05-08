@@ -31,7 +31,7 @@
 
     <div class="budget-display">
         <div class="budget-header">
-          <h3>Budget for {{ formatMonthYear(currentMonthYear) }}</h3>
+          <h3>Budget for <br> {{ formatMonthYear(currentMonthYear) }}</h3>
           <button v-if="!hasExistingBudget" @click="showAddBudgetForm" class="btn-add">
             Add Budget
           </button>
@@ -51,17 +51,17 @@
           
 
   <div class="budget-amount">
-    <span>Budget Amount:</span>
-    <strong>{{ formatPHP(currentMonthBudget.budget_amount) }}</strong>
+    <span>BUDGET AMOUNT:</span>
+    <strong class="amount-value">{{ formatPHP(currentMonthBudget.budget_amount) }}</strong>
   </div>
 
           <div class="expenses-amount">
-          <span>Total Expenses:</span>
+          <span>TOTAL EXPENSES:</span>
           <strong>{{ formatPHP(totalExpensesForMonth) }}</strong>
           </div>
 
           <div class="remaining-budget">
-          <span>Remaining Budget:</span>
+          <span>REMAINING BUDGET:</span>
           <strong :class="{ 'text-danger': remainingBudget < 0 }">
             {{ formatPHP(remainingBudget) }}
           </strong>
@@ -76,7 +76,7 @@
               ></div>
             </div>
             <div class="progress-text">
-              {{ budgetProgress.toFixed(1) }}% used
+              {{ budgetProgress.toFixed(1) }}% 
             </div>
           </div>
         </div>
@@ -125,7 +125,7 @@
 
   <!--ADDING EXPENSESSSS-->
     <div class="content-wrapper">
-      <form @submit.prevent="handleSubmit" class="expense-form"> <!-- CLASS IS NEWWWWWWWWWWW-->
+      <form @submit.prevent="handleSubmit" class="expense-form"> 
          <input type="hidden" v-model="action" />
          <input type="hidden" v-if="editId" v-model="editId" />
 
@@ -296,7 +296,9 @@
   },
   
   remainingBudget() {
-    return (this.currentMonthBudget.budget_amount || 0) - this.totalExpensesForMonth;
+    const budgetAmount = this.currentMonthBudget?.budget_amount || 0;
+    const totalExpenses = this.totalExpensesForMonth;
+    return budgetAmount - totalExpenses; 
   },
 
   currentBudgetDisplay() {
@@ -789,17 +791,22 @@ shouldSuggestAlternative(itemName) {
      },
      
      formatPHP(value) {
-       try {
-         const amount = Number(this.parseCurrency(value)) || 0;
-         return '₱' + amount.toLocaleString('en-PH', {
-           minimumFractionDigits: 2,
-           maximumFractionDigits: 2
-         });
-       } catch (e) {
-         console.error('Error formatting PHP:', e);
-         return '₱0.00';
-       }
-     },
+  try {
+    const numericValue = typeof value === 'string' ? this.parseCurrency(value) : value;
+    const amount = Number(numericValue) || 0;
+    
+    return amount.toLocaleString('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).replace('₱', '₱'); 
+  } catch (e) {
+    console.error('Error formatting PHP:', e);
+    return '₱0.00'; // Fallback value
+  }
+},
+
      
      formatDate(dateString) {
        if (!dateString || dateString === 'N/A') return 'N/A';
@@ -1014,6 +1021,9 @@ async deleteExpenseHandler(id) {
 
  
 <style scoped>
+.text-danger {
+  color: #dc3545; 
+}
 .budget-form input[type="month"] {
   width: 100%;
   padding: 12px;
@@ -1201,26 +1211,28 @@ async deleteExpenseHandler(id) {
 /* Budget Container Styles */
 .budget-container {
   width: 30%;
-  background-color: #4a7c59; 
-  padding: 25px;
+  background-color: rgb(216, 248, 216);; 
+  padding: 20px;
   border-radius: 15px;
   border: 2px solid #2e4e38;
   box-shadow: 0 4px 8px rgba(0,0,0,0.2);
   height: auto;
-  color: white;
+  color: #1e3a2b;
+  font-size: 1.05rem;
 }
 
 .budget-header {
   flex-wrap: wrap;
   display: flex;
   align-items: center;
-  margin-bottom: 25px;
+  margin-bottom: 2px;
 }
 
 .budget-header h3 {
-  color: white;
-  font-size: 1.5rem;
-  margin-right: 16px;
+  color: #183d2a;
+  font-size: 1.8rem;
+  margin-right: 25px;
+  font-weight: bold;
 }
 
 .budget-content {
@@ -1234,27 +1246,27 @@ async deleteExpenseHandler(id) {
   padding: 10px 15px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 15px;
   transition: all 0.3s;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   max-width: 72px;
   font-size: 14px;
-  margin-left: 5px;
+  margin-left: 0;      
+  display: inline-block; 
 }
 
 
 .btn-add:hover, .btn-edit:hover {
-  background: #dcdcdc;
-  color: #333333;
+  background: #e6e6e6;
+  color: #2a2a2a;
   transform: translateY(-2px);
 }
 
 .budget-display {
   flex-wrap: wrap;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(32, 28, 28, 0.05);
   padding: 20px;
   border-radius: 10px;
-  margin-bottom: 20px;
 }
 
 .budget-info {
@@ -1296,6 +1308,39 @@ async deleteExpenseHandler(id) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.amount-value {
+  margin-left: 6px;
+}
+
+@media (max-width: 768px) {
+  .top-row {
+    flex-wrap: wrap;
+    gap: 8px; /* reduced from 16px */
+    padding: 10px 0; /* reduce vertical padding */
+    margin-bottom: 10px;
+  }
+  .budget-container {
+    width: 100%;
+    font-size: 1rem;
+  }
+
+  .budget-header h3 {
+    font-size: 1.4rem;
+  }
+
+  .btn-add, .btn-edit {
+    font-size: 14px;
+  }
+
+  .month-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px; /* smaller spacing between the buttons and text */
+  font-size: 1rem;
+  }
 }
 
 .budget-form label {
@@ -1350,26 +1395,29 @@ async deleteExpenseHandler(id) {
 
 .budget-success-message {
   background-color: #d4edda;
-  color: #155724;
+  color: #1d4d2b;
   padding: 10px;
   border-radius: 4px;
   margin: 10px 0;
   text-align: center;
   transition: opacity 0.5s ease;
+  font-size: 1rem;
 }
 
 .budget-details {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 10px;
 }
 
 .month-selector {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 15px;
-  margin-bottom: 15px;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 1.5rem;
+  color: #1b3d2f;
 }
 
 .month-selector button {
@@ -1384,14 +1432,20 @@ async deleteExpenseHandler(id) {
 .budget-amount {
   display: flex;
   justify-content: space-between;
+  font-size: 1.3rem;
+  color: #264d3b;
+  margin-top: 20px;
 }
 
+.expenses-amount {
+  margin-top: 10px;
+}
 .budget-progress {
-  margin-top: 15px;
+  margin-top: 2px;
 }
 
 .progress-bar {
-  height: 20px;
+  height: 16px;
   background-color: #f0f0f0;
   border-radius: 10px;
   overflow: hidden;
@@ -1400,7 +1454,7 @@ async deleteExpenseHandler(id) {
 
 .progress-fill {
   height: 100%;
-  background-color: #4CAF50;
+  background-color: #2a4935;
   transition: width 0.3s;
 }
 
@@ -1410,7 +1464,8 @@ async deleteExpenseHandler(id) {
 
 .progress-text {
   text-align: right;
-  font-size: 0.9rem;
+  font-size: 1.1rem;
+  color: #1a3d2c;
 }
 
 .budget-form-modal {
@@ -1494,7 +1549,7 @@ async deleteExpenseHandler(id) {
  .content-wrapper {
   align-content: center;
   width: 70%;
-  background-color: #85cf9d;
+  background-color: #C6EBC5;
   border: 2px solid #365c42;
   padding: 20px;
   border-radius: 15px;
@@ -1510,7 +1565,7 @@ async deleteExpenseHandler(id) {
   background-color: white;
   padding: 20px;
   border-radius: 15px;
-  border: 2px solid #85cf9d;
+  border: 3px solid #6A9C89;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
   margin-top: 30px;
   transition: box-shadow 0.3s ease;
@@ -1730,15 +1785,15 @@ td, th {
 /* RESPONSIVE DESIGN */
 
 @media screen and (max-width: 1000px) {
-    .container {
-        margin: 20px 0px 0px 30px;
-        padding: 15px;
-        height: 500px;
-    }
+  .content-wrapper{
+    width: 440px;
+    margin-top: 30px;
+  }
 
     .expense-form{
       margin-top: 10px;
       margin-bottom: 10px;
+      width: 440px;
     }
 
     .btn-add, .btn-edit {
