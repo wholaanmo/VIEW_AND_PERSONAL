@@ -466,8 +466,19 @@ currentBudget() {
      prevMonth() {
     const date = new Date(this.currentMonthYear);
     date.setMonth(date.getMonth() - 1);
-    this.changeMonth(date);
-  },
+    const now = new Date();
+    const newMonthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const newDate = new Date(newMonthYear);
+  
+  if (newDate.getFullYear() < now.getFullYear() || 
+      (newDate.getFullYear() === now.getFullYear() && newDate.getMonth() < now.getMonth())) {
+
+    this.showBudgetSuccessMessage('Cannot navigate to past months');
+    return;
+  }
+  
+  this.changeMonth(date);
+},
 
   nextMonth() {
     const date = new Date(this.currentMonthYear);
@@ -867,8 +878,7 @@ shouldSuggestAlternative(itemName) {
       item_price: Number(this.itemPrice), 
       expense_type: this.expenseType === 'Other' ? this.customExpenseType : this.expenseType,
       item_name: this.itemName,
-      personal_budget_id: budget.id, // Link to current month's budget
-      expense_date: new Date().toISOString()
+      personal_budget_id: budget.id 
     };
     
     let result;
