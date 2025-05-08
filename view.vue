@@ -9,7 +9,14 @@
 
     <div v-if="currentView === 'view'" class="budget-section">
       <div class="content-wrapper">
-        <div class="month-year-selector">
+        <div class="view-toggle">
+            <button @click="toggleYearFilter" class="toggle-button">
+              {{ showYearFilter ? 'Switch to Month View' : 'Switch to Year View' }}
+            </button>
+          </div>
+
+          <!-- Modified month/year selector section -->
+          <div v-if="!showYearFilter" class="month-year-selector">
             <div class="year-selector">
               <label for="year">Year:</label>
               <select id="year" v-model="selectedYear" @change="updateSelectedMonthYear">
@@ -28,6 +35,17 @@
               </button>
             </div>
           </div>
+
+          <!-- Add year-only selector when in year view -->
+          <div v-if="showYearFilter" class="year-only-selector">
+            <div class="year-selector">
+              <label for="year-filter">Year:</label>
+              <select id="year-filter" v-model="yearFilter" @change="updateExpenseView">
+                <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+              </select>
+            </div>
+          </div>
+
         <!-- Filter Buttons -->
         <div class="filter-buttons">
           <button @click="filterExpenses('Food')" :class="{ active: filterCategory === 'Food' }">Food</button>
@@ -148,6 +166,8 @@ export default {
       wasBudgetExceeded: false,
       selectedYear: new Date().getFullYear().toString(), 
       selectedMonth: (new Date().getMonth() + 1).toString().padStart(2, '0'),
+      yearFilter: null, // Add this for year-only filtering
+      showYearFilter: false,
       chartOptions: {
         responsive: true,
         plugins: {
@@ -194,6 +214,21 @@ export default {
 
   computed: {
     ...mapGetters(['getViewExpenses', 'getPersonalBudgets', 'getViewPageMonthYear']),
+
+    availableYears() {
+  const years = new Set();
+  this.getViewExpenses.forEach(expense => {
+    if (expense.expense_date) {
+      years.add(new Date(expense.expense_date).getFullYear());
+    }
+  });
+  this.getPersonalBudgets.forEach(budget => {
+    if (budget.month_year) {
+      years.add(parseInt(budget.month_year.split('-')[0]));
+    }
+  });
+  return Array.from(years).sort((a, b) => b - a); // Descending order
+},
 
     usdExchangeRate() {
       return this.$store.state.usdExchangeRate || 0.018045;
@@ -284,30 +319,57 @@ export default {
       ];
     },
 
-  filteredExpenses() {
-  const currentBudget = this.$store.getters.getCurrentBudget(
-    `${this.selectedYear}-${this.selectedMonth}`
-  );
+    filteredExpenses() {
+  let expenses = this.getViewExpenses || [];
   
-  if (!currentBudget?.id) return [];
+  // Apply year filter if enabled
+  if (this.showYearFilter && this.yearFilter) {
+    expenses = expenses.filter(expense => {
+      if (!expense.expense_date) return false;
+      return new Date(expense.expense_date).getFullYear() == this.yearFilter;
+    });
+  } 
+  // Apply month filter if not in year view
+  else {
+    const currentBudget = this.$store.getters.getCurrentBudget(
+      `${this.selectedYear}-${this.selectedMonth}`
+    );
+    
+    if (!currentBudget?.id) return [];
+    
+    expenses = expenses.filter(expense => 
+      expense.personal_budget_id === currentBudget.id
+    );
+  }
 
-  return (this.getViewExpenses || [])
-    .filter(expense => {
-      const matchesBudget = expense.personal_budget_id === currentBudget.id;
-      
-      const matchesCategory = !this.filterCategory || 
-                            this.filterCategory === 'all' ||
-                            expense.expense_type.toLowerCase() === this.filterCategory.toLowerCase();
-      
-      return matchesBudget && matchesCategory;
-    })
-    .map(expense => ({
-      ...expense,
-      category: expense.expense_type,
-      name: expense.item_name,
-      amount: Number(expense.item_price),
-      date: this.formatDateForView(expense.expense_date)
-    }));
+  // Apply category filter
+  if (this.filterCategory && this.filterCategory !== 'all') {
+    expenses = expenses.filter(expense => 
+      expense.expense_type.toLowerCase() === this.filterCategory.toLowerCase()
+    );
+  }
+
+  return expenses.map(expense => ({
+    ...expense,
+    category: expense.expense_type,
+    name: expense.item_name,
+    amount: Number(expense.item_price),
+    date: this.formatDateForView(expense.expense_date)
+  }));
+},
+
+toggleYearFilter() {
+  this.showYearFilter = !this.showYearFilter;
+  this.updateExpenseView();
+},
+
+updateExpenseView() {
+  if (this.showYearFilter) {
+    this.$store.dispatch('fetchViewExpenses', { year: this.yearFilter });
+  } else {
+    const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
+    this.$store.dispatch('fetchViewExpenses', { monthYear });
+  }
 },
 
   currentBudget() {
@@ -520,7 +582,47 @@ export default {
 
 
 <style scoped>
-/* Month/Year Selector Styles */
+.view-toggle {
+  margin-bottom: 5px;
+  text-align: center;
+}
+
+.toggle-button {
+  background-color: #e6f4ea; /* soft green background */
+  color: #2e5940; /* darker green text */
+  border: 2px solid #2e5940;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.toggle-button:hover {
+  background-color: #2e5940;
+  color: white;
+  transform: translateY(-1px);
+}
+
+.year-only-selector {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 15px;
+}
+
+.year-only-selector .year-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.year-only-selector select {
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
 .month-year-selector {
   margin: 1px 0 0px 0; 
   padding: 15px;
