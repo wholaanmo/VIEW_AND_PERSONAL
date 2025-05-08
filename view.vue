@@ -284,22 +284,30 @@ export default {
       ];
     },
 
-    filteredExpenses() {
-      let expenses = (this.getViewExpenses || []).map(expense => ({
-    ...expense,
-    category: expense.expense_type,
-    name: expense.item_name,
-    amount: Number(expense.item_price),
-    date: this.formatDateForView(expense.expense_date)
-  }));
+  filteredExpenses() {
+  const currentBudget = this.$store.getters.getCurrentBudget(
+    `${this.selectedYear}-${this.selectedMonth}`
+  );
+  
+  if (!currentBudget?.id) return [];
 
-  if (this.filterCategory && this.filterCategory !== 'all') {
-    expenses = expenses.filter(expense => 
-      expense.category.toLowerCase() === this.filterCategory.toLowerCase()
-    );
-  }
-
-  return expenses;
+  return (this.getViewExpenses || [])
+    .filter(expense => {
+      const matchesBudget = expense.personal_budget_id === currentBudget.id;
+      
+      const matchesCategory = !this.filterCategory || 
+                            this.filterCategory === 'all' ||
+                            expense.expense_type.toLowerCase() === this.filterCategory.toLowerCase();
+      
+      return matchesBudget && matchesCategory;
+    })
+    .map(expense => ({
+      ...expense,
+      category: expense.expense_type,
+      name: expense.item_name,
+      amount: Number(expense.item_price),
+      date: this.formatDateForView(expense.expense_date)
+    }));
 },
 
   currentBudget() {
