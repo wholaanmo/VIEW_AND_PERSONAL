@@ -125,11 +125,15 @@
 import Navigation from "./navigation.vue"; 
 import { Pie } from 'vue-chartjs';
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale } from 'chart.js';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { mapGetters, mapActions } from 'vuex';
 
-ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale);
+ChartJS.register(
+  Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale, 
+  ChartDataLabels 
+);
 
 export default {
   components: {
@@ -146,14 +150,26 @@ export default {
       selectedMonth: (new Date().getMonth() + 1).toString().padStart(2, '0'),
       chartOptions: {
         responsive: true,
-        onClick: (event, elements) => {
-          if (elements.length > 0) {
-            const index = elements[0].index;
-            const month = this.availableMonths[index];
-            this.selectMonth(month.value);
-          }
-        },
         plugins: {
+          datalabels: {
+            formatter: (value, context) => {
+              const dataset = context.chart.data.datasets[0].data;
+              const total = dataset.reduce((sum, val) => sum + val, 0);
+              if (value > 0) {
+                return (value / total * 100).toFixed(1) + '%';
+              }
+              return null; // This will hide the label for zero values
+            },
+            color: '#000',
+            font: {
+              weight: 'bold',
+              size: 12
+            },
+            anchor: 'center',
+            align: 'center',
+            offset: 0,
+            padding: 0
+          },
           legend: {
             position: 'top',
           },
@@ -165,6 +181,13 @@ export default {
             },
           },
         },
+        onClick: (event, elements) => {
+          if (elements.length > 0) {
+            const index = elements[0].index;
+            const month = this.availableMonths[index];
+            this.selectMonth(month.value);
+          }
+        }
       },
     };
   },
