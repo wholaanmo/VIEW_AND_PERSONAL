@@ -36,10 +36,9 @@
             </div>
           </div>
 
-          <!-- Add year-only selector when in year view -->
           <div v-if="showYearFilter" class="year-only-selector">
             <div class="year-selector">
-              <label for="year-filter">Year:</label>
+              <label for="year-filter">YEAR:</label>
               <select id="year-filter" v-model="yearFilter" @change="updateExpenseView">
                 <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
               </select>
@@ -60,7 +59,8 @@
 
         <!-- Expense Table -->
         <div class="expense-table">
-          <h3>Expenses for {{ availableMonths.find(m => m.value === selectedMonth)?.label }} {{ selectedYear }}</h3>
+            <h3 v-if="!showYearFilter">Expenses for {{ availableMonths.find(m => m.value === selectedMonth)?.label }} {{ selectedYear }}</h3>
+            <h3 v-else>Expenses for {{ yearFilter }}</h3>
           <table>
             <thead>
               <tr>
@@ -71,13 +71,23 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(expense, index) in filteredExpenses" :key="expense.id" :class="{'alternate-row': index % 2 !== 0}">
-                <td>{{ expense.category }}</td>
-                <td>{{ expense.name }}</td>
-                <td>{{ formatCurrency(expense.amount) }}</td> <!-- Use formatCurrency method here -->
-                <td>{{ expense.date }}</td>
-              </tr>
-            </tbody>
+      <tr v-if="filteredExpenses.length === 0">
+        <td colspan="4" class="no-expenses-message">
+          NO EXPENSES
+        </td>
+      </tr>
+      <tr 
+        v-for="(expense, index) in filteredExpenses" 
+        v-else
+        :key="expense.id" 
+        :class="{'alternate-row': index % 2 !== 0}"
+      >
+        <td>{{ expense.category }}</td>
+        <td>{{ expense.name }}</td>
+        <td>{{ formatCurrency(expense.amount) }}</td>
+        <td>{{ expense.date }}</td>
+      </tr>
+    </tbody>
           </table>
         </div>
 
@@ -661,6 +671,26 @@ updateExpenseView() {
 
 
 <style scoped>
+.no-expenses-message {
+  justify-content: center;   
+  align-items: center;                 
+  padding: 20px;
+  text-align: center;
+  font-style: italic;
+  font-size: 23px;
+  color: #666;
+  background-color: #f9f9f9;
+  border-radius: 10px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.no-expenses-message {
+  animation: fadeIn 0.5s ease-in-out;
+}
 .view-toggle {
   margin-bottom: 5px;
   text-align: center;
@@ -967,7 +997,7 @@ button:hover {
 
 .expense-table th, .expense-table td {
   padding: 12px;
-  text-align: left;
+  text-align: center;
   border: 1px solid #000000;
   vertical-align: top;
   word-break: break-word; 
