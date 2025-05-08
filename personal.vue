@@ -1,6 +1,6 @@
 <template>
   <navigation/>
-  <div class="main-layout">
+  <div class="main-layout smooth-scroll">
     <div v-if="showBudgetExceededAlert" class="budget-alert">
       <div class="alert-content">
         <span class="alert-icon">⚠️</span>
@@ -127,7 +127,7 @@
 
   <!--ADDING EXPENSESSSS-->
     <div class="content-wrapper">
-      <form @submit.prevent="handleSubmit" class="expense-form"> 
+      <form @submit.prevent="handleSubmit" class="expense-form" ref="expenseForm"> 
          <input type="hidden" v-model="action" />
          <input type="hidden" v-if="editId" v-model="editId" />
 
@@ -183,7 +183,7 @@
       </div>
 
       <!--YOUR LIST OF EXPENSES-->
-      <div class="expenses-container">
+      <div class="expenses-container smooth-scroll" ref="expensesContainer">
       <div class="expenses-section"> 
         <h3>Your Expenses</h3> 
          <div class="expenses-table"> 
@@ -403,13 +403,23 @@ currentBudget() {
     ]);
     
     this.checkBudgetStatus();
-    } catch (error) {
-      console.error("Initialization error:", error);
-      this.error = error.message || 'Failed to load data';
-    } finally {
-      this.isLoading = false;
+    
+    if (this.editId) {
+      this.$nextTick(() => {
+        const formElement = this.$refs.expenseForm;
+        if (formElement) {
+          formElement.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
     }
-  },
+    
+  } catch (error) {
+    console.error("Initialization error:", error);
+    this.error = error.message || 'Failed to load data';
+  } finally {
+    this.isLoading = false;
+  }
+},
 
   beforeUnmount() {
     clearInterval(this.monthCheckInterval);
@@ -898,6 +908,17 @@ shouldSuggestAlternative(itemName) {
       
       this.showExpenseSuccessMessage(result.message || (this.editId ? 'Expense updated!' : 'Expense added successfully!'));
       this.resetForm();
+      if (this.editId) {
+        // For edits, scroll back to the form
+        this.$nextTick(() => {
+          this.$refs.expenseForm.scrollIntoView({ behavior: 'smooth' });
+        });
+      } else {
+        // For new expenses, scroll to the expenses list
+        this.$nextTick(() => {
+          this.$refs.expensesContainer.scrollIntoView({ behavior: 'smooth' });
+        });
+      }
     } else {
       this.showExpenseSuccessMessage(result.message || 'Operation failed');
     }
@@ -946,7 +967,9 @@ editExpense(expense) {
   this.itemPrice = expense.item_price || '';
   this.action = 'edit'; // Make sure this is set
 
-  console.log('Editing expense ID:', this.editId);
+  this.$nextTick(() => {
+    this.$refs.expenseForm.scrollIntoView({ behavior: 'smooth' });
+  });
 },
  
 async deleteExpenseHandler(id) {
@@ -1035,6 +1058,9 @@ async deleteExpenseHandler(id) {
 
  
 <style scoped>
+.smooth-scroll {
+  scroll-behavior: smooth;
+}
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -1609,6 +1635,7 @@ async deleteExpenseHandler(id) {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
   margin-top: 30px;
   transition: box-shadow 0.3s ease;
+  transition: all 0.3s ease;
 }
  
 .expenses-container:hover {
@@ -1618,6 +1645,8 @@ async deleteExpenseHandler(id) {
  .expense-form {
   text-align: center;
   width: 100%; 
+  transition: all 0.3s ease;
+  scroll-margin-top: 200px;
 }  
  
 
