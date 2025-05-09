@@ -1,0 +1,498 @@
+<template>
+    <div class="login-bg">
+        <div class="container">
+            <div class="login-container">
+                <div class="login-form">
+                <form @submit.prevent="loginUser">
+                    <div class="login-form-items">
+                        <span class="login-label">LOG IN</span>
+                        <div class="text-input-container">
+                        <label class="form-label">EMAIL</label>
+                        <input v-model="email" type="text" name="email" class="text-style" required>
+                        
+                        <label class="form-label">PASSWORD</label>
+                        <input v-model="password" type="password" name="password" class="text-style" required>  
+                    </div>
+
+                    <p style="color: red; margin-left: 15px;">{{ message }}</p>
+                    
+                        <button type="submit" class="login-btn">SIGN IN</button>
+                        <router-link to="/register" class="login-btn">SIGN UP</router-link>
+                        <a href="#" @click.prevent="showForgotPassword = true" class="forgot-password">
+                        Forgot Password?
+                        </a>
+                    </div>
+                </form>   
+                
+                <div v-if="showForgotPassword" class="forgot-password-modal">
+            <div class="modal-content">
+              <span class="close" @click="showForgotPassword = false">&times;</span>
+              <h3>Reset Password</h3>
+              <div class="input-group">
+                <label>Email Address</label>
+                <input v-model="resetEmail" type="email" placeholder="Enter your email">
+              </div>
+              <button @click="sendResetLink" class="reset-btn">Send Reset Link</button>
+              <p v-if="resetMessage" :class="{ 'success': resetSuccess, 'error': !resetSuccess }">
+                {{ resetMessage }}
+              </p>
+            </div>
+          </div>
+        </div>
+                
+        <div class="login-deco-container">
+        <div class="login-deco">
+        <span class="penny">MONEY <br> LOG</span>
+            <img src="/LOGO.png" alt="Logo Image" class="deco-image">  
+        </div>
+        </div>
+        </div>
+        </div>
+    </div>
+    </template>
+    
+    <script>
+    import { ref } from 'vue';
+    import axios from 'axios';
+    import { useRouter } from 'vue-router';
+    
+    export default {
+      setup() {
+        const router = useRouter();
+        const email = ref('');
+        const password = ref('');
+        const message = ref('');
+        const showForgotPassword = ref(false);
+        const resetEmail = ref('');
+        const resetMessage = ref('');
+        const resetSuccess = ref(false);
+    
+        const loginUser = async () => {
+          message.value = ''; // Reset error message
+    
+          if (!email.value || !password.value) {
+            message.value = 'Email and password are required!';
+            return;
+          };
+    
+          try {
+            const response = await axios.post(
+              'http://localhost:3000/api/users/login',
+              {
+                email: email.value,
+                password: password.value,
+              },
+            );
+    
+            if (response.data.success === 1) {
+              localStorage.setItem('jsontoken', response.data.token);
+
+          localStorage.setItem('user', JSON.stringify({
+            id: response.data.user.id,
+            name: response.data.user.name,
+            email: response.data.user.email,
+          }));
+
+          router.push('/personal');
+    } else {
+      message.value = response.data.message || 'Login failed.';
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    if (error.response && error.response.status === 401) {
+      message.value = 'Invalid email or password.';
+    } else {
+      message.value = 'Login service unavailable. Please try again later.';
+    }
+  }
+};
+
+const sendResetLink = async () => {
+  resetMessage.value = '';
+  resetSuccess.value = false;
+
+  if (!resetEmail.value) {
+    resetMessage.value = 'Email is required';
+    return;
+  }
+
+  try {
+    const response = await axios.post(
+      'http://localhost:3000/api/users/forgot-password',
+      { email: resetEmail.value }
+    );
+
+    if (response.data.success) {
+      resetSuccess.value = true;
+      resetMessage.value = 'Password reset link sent to your email';
+    } else {
+      resetMessage.value = response.data.message || 'Failed to send reset link';
+    }
+  } catch (error) {
+    console.error('Password reset error:', error);
+    resetMessage.value = 'Error sending reset link. Please try again.';
+  }
+};
+
+return {
+  email,
+  password,
+  message,
+  loginUser,
+  showForgotPassword,
+  resetEmail,
+  resetMessage,
+  resetSuccess,
+  sendResetLink
+};
+      },
+    };
+    </script>
+    
+    
+    <style scoped>
+    .forgot-password {
+  display: block;
+  margin-top: 15px;
+  text-align: center;
+  color: #666;
+  text-decoration: none;
+  font-size: 0.9em;
+}
+
+.forgot-password:hover {
+  color: #333;
+  text-decoration: underline;
+}
+
+.forgot-password-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  padding: 20px;
+  border-radius: 5px;
+  width: 90%;
+  max-width: 400px;
+}
+
+.close {
+  float: right;
+  font-size: 1.5em;
+  cursor: pointer;
+}
+
+.input-group {
+  margin: 15px 0;
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.reset-btn {
+  width: 100%;
+  padding: 10px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reset-btn:hover {
+  background-color: #45a049;
+}
+
+.success {
+  color: green;
+  margin-top: 10px;
+}
+
+.error {
+  color: red;
+  margin-top: 10px;
+}
+   
+    .login-bg {
+        background-image: url("/circle.png");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        min-height: 100vh;
+        width: 100%;
+        padding: 20px;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow-x: hidden;
+    }
+    
+    .container {
+        width: 100%;
+        min-height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .login-container {
+        width: 100%;
+        max-width: 650px;
+        min-width: 390px;
+        height: auto;
+        background: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        display: flex;
+        justify-content: space-between;
+        flex-direction: row;
+        padding: 30px;
+        gap: 20px;
+        box-sizing: border-box;
+    }
+    
+    .login-form {
+        width: 50%;
+        display: flex;
+        flex-direction: column;
+        text-align: center;
+        align-items: center;
+        padding: 10px;
+    }
+    
+    .login-form-items {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 99%;
+    }
+    
+    span.login-label {
+        color: black;
+        font-weight: 900;
+        font-size: 36px;
+        letter-spacing: 2px;
+        margin-bottom: 30px;
+        white-space: nowrap;
+    }
+    
+    .text-input-container {
+        width: 100%;
+        max-width: 300px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .text-input-container input {
+        width: 100%;
+        padding: 4px;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+    
+    input.text-style {
+        border-radius: 10px;
+        width: 100%;
+        height: 10px;
+        padding: 10px 12px;
+        font-size: 14px;
+        background: none;
+        border: 2px solid rgb(51, 47, 47);
+        color: black;
+        box-sizing: border-box;
+    }
+    
+    input:focus {
+        outline: none;
+    }
+    
+    .form-label {
+        color: black;
+        font-weight: 350;
+        font-size: 15px;
+        margin-bottom: 5px;
+    }
+    
+    .login-btn {
+        width: 200px;
+        background: #D6EFD8;
+        border-radius: 20px;
+        border: none;
+        padding: 10px 0;
+        color: black;
+        font-weight: 705;
+        font-size: 15px;
+        letter-spacing: 2px;
+        margin-bottom: 10px;
+        margin-top: 10px;
+        cursor: pointer;
+        box-shadow: 0 8px 10px 0 rgba(0,0,0,0.25);
+        text-decoration: none;
+        text-align: center;
+    }
+    
+    .login-btn:hover {
+        background-color: #80AF81;
+    }
+    
+    .login-deco-container {
+        width: 50%;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 10px;
+        box-sizing: border-box;
+    }
+    
+    .login-deco {
+        position: relative;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .deco-image {
+        width: 100%;
+        max-width: 300px;
+        height: auto;
+        margin-top: 100px;
+    }
+    
+    .penny {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #f6f8d5;
+        font-weight: bold;
+        font-size: 40px;
+        letter-spacing: 2px;
+        padding-top: 10px;
+        text-align: center;
+    }
+    
+    .success {
+        color: green;
+    }
+    
+    .invalid {
+        color: red;
+        font-size: 0.9em;
+    }
+    
+    /* Responsive adjustments without stacking */
+    
+    @media (max-width: 1024px) {
+        .login-container {
+            padding: 20px;
+            gap: 10px;
+        }
+    
+        .login-form,
+        .login-deco-container {
+            width: 50%;
+        }
+    
+        .deco-image {
+            max-width: 260px;
+            margin-top: 80px;
+        }
+    
+        .penny {
+            font-size: 36px;
+        }
+    
+        .login-label {
+            font-size: 28px;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .login-container {
+            padding: 20px;
+            gap: 10px;
+        }
+
+        .text-input-container {
+                width: 100%;
+            }
+    
+        .login-form,
+        .login-deco-container {
+            width: 50%;
+        }
+    
+        .deco-image {
+            max-width: 220px;
+        }
+    
+        .penny {
+            font-size: 32px;
+        }
+    
+        .login-label {
+            font-size: 24px;
+        }
+    
+        .login-btn {
+            font-size: 14px;
+            padding: 8px 0;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .login-container {
+            padding: 20px;
+            gap: 10px;
+        }
+    
+        .login-form,
+        .login-deco-container {
+            width: 50%;
+        }
+    
+        .deco-image {
+            max-width: 220px;
+        }
+    
+        .penny {
+            font-size: 28px;
+        }
+    
+        .login-label {
+            font-size: 20px;
+        }
+    
+        .login-btn {
+            font-size: 13px;
+            padding: 6px 0;
+        }
+    }
+    </style>
+    
