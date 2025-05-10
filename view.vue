@@ -270,13 +270,33 @@ export default {
     ...mapGetters(['getViewExpenses', 'getPersonalBudgets', 'getViewPageMonthYear']),
     
     yearlyExpensesByCategory() {
-  if (!this.showYearFilter || !this.yearFilter) return 0; 
+  if (!this.showYearFilter || !this.yearFilter) return 0;
+  
   return this.getViewExpenses.reduce((sum, expense) => {
+    // Skip if expense doesn't match the selected year
+    if (!expense.expense_date || new Date(expense.expense_date).getFullYear() != this.yearFilter) {
+      return sum;
+    }
 
-    const matchesCategory = this.filterCategory === 'All' || 
-                          expense.expense_type === this.filterCategory;
+    // Handle "All" filter
+    if (this.filterCategory === 'All') {
+      return sum + (Number(expense.item_price) || 0);
+    }
     
-    return matchesCategory ? sum + (Number(expense.item_price) || 0) : sum;
+    // Handle "Other" filter
+    if (this.filterCategory === 'Other') {
+      const standardCategories = [
+        'Food', 'Bill', 'Transportation', 
+        'Entertainment', 'Healthcare', 'Shopping'
+      ];
+      const isStandardCategory = standardCategories.includes(expense.expense_type);
+      return isStandardCategory ? sum : sum + (Number(expense.item_price) || 0);
+    }
+    
+    // Handle specific category filter
+    return expense.expense_type === this.filterCategory ? 
+      sum + (Number(expense.item_price) || 0) : 
+      sum;
   }, 0);
 },
     
@@ -285,9 +305,9 @@ export default {
   },
 
   yearlyBudgetPercentageByCategory() {
-    if (!this.yearlyBudgetsTotal) return 0;
-    return Math.min(100, (this.yearlyExpensesByCategory / this.yearlyBudgetsTotal) * 100);
-  },
+  if (!this.yearlyBudgetsTotal || this.yearlyBudgetsTotal <= 0) return 0;
+  return Math.min(100, (this.yearlyExpensesByCategory / this.yearlyBudgetsTotal) * 100);
+},
 
     yearlyExpensesTotal() {
     if (!this.showYearFilter || !this.yearFilter) return 0;
