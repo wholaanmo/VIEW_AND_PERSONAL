@@ -59,12 +59,12 @@
 
         <!-- Expense Table -->
         <div class="expense-table">
-          <h3 v-if="!showYearFilter">Expenses for  {{ availableMonths.find(m => m.value === selectedMonth)?.label }} {{ selectedYear }}
-          <span class="category-label">&nbsp;({{ filterCategory === 'All' ? 'All Categories' : filterCategory }})</span>
-        </h3>
-          <h3 v-else>Expenses for  {{ yearFilter }}
-            <span class="category-label">&nbsp;({{ filterCategory === 'All' ? 'All Categories' : filterCategory }})</span>
-        </h3>
+          <h3 v-if="!showYearFilter">Expenses for {{ availableMonths.find(m => m.value === selectedMonth)?.label }} {{ selectedYear }}
+  <span class="category-label">&nbsp;({{ filterCategory === 'All' ? 'All Categories' : filterCategory === 'Other' ? 'Other Categories' : filterCategory }})</span>
+</h3>
+<h3 v-else>Expenses for {{ yearFilter }}
+  <span class="category-label">&nbsp;({{ filterCategory === 'All' ? 'All Categories' : filterCategory === 'Other' ? 'Other Categories' : filterCategory }})</span>
+</h3>
           <table>
             <thead>
               <tr>
@@ -212,7 +212,7 @@ export default {
       wasBudgetExceeded: false,
       selectedYear: new Date().getFullYear().toString(), 
       selectedMonth: (new Date().getMonth() + 1).toString().padStart(2, '0'),
-      yearFilter: null, // Add this for year-only filtering
+      yearFilter: new Date().getFullYear().toString(), // Add this for year-only filtering
       showYearFilter: false,
       chartOptions: {
   responsive: true,
@@ -373,7 +373,7 @@ export default {
       };
 
       this.filteredExpenses.forEach(expense => {
-        const category = expense.category === 'HealthCare' ? 'Healthcare' : expense.category; // Normalize category name
+        const category = expense.category === 'HealthCare' ? 'Healthcare' : expense.category; 
         if (category in categoryCounts) {
           categoryCounts[category] += expense.amount;
         } else {
@@ -430,12 +430,14 @@ export default {
     filteredExpenses() {
   let expenses = this.getViewExpenses || [];
   
+  // Apply year filter if enabled
   if (this.showYearFilter && this.yearFilter) {
     expenses = expenses.filter(expense => {
       if (!expense.expense_date) return false;
       return new Date(expense.expense_date).getFullYear() == this.yearFilter;
     });
   } 
+  // Apply month filter if not in year view
   else {
     const currentBudget = this.$store.getters.getCurrentBudget(
       `${this.selectedYear}-${this.selectedMonth}`
@@ -449,9 +451,23 @@ export default {
   }
 
   if (this.filterCategory && this.filterCategory !== 'All') {
-    expenses = expenses.filter(expense => 
-      expense.expense_type === this.filterCategory
-    );
+    expenses = expenses.filter(expense => {
+
+      if (this.filterCategory.toLowerCase() === 'other') {
+        const isStandardCategory = [
+          'food', 'bill', 'transportation', 
+          'entertainment', 'healthcare', 'shopping'
+        ].includes(expense.expense_type?.toLowerCase());
+        
+
+        return !isStandardCategory;
+      } else {
+
+        const expenseCategory = expense.expense_type ? expense.expense_type.trim().toLowerCase() : '';
+        const filterCategory = this.filterCategory ? this.filterCategory.trim().toLowerCase() : '';
+        return expenseCategory === filterCategory;
+      }
+    });
   }
 
   return expenses.map(expense => ({
@@ -466,15 +482,6 @@ export default {
 toggleYearFilter() {
   this.showYearFilter = !this.showYearFilter;
   this.updateExpenseView();
-},
-
-updateExpenseView() {
-  if (this.showYearFilter) {
-    this.$store.dispatch('fetchViewExpenses', { year: this.yearFilter });
-  } else {
-    const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
-    this.$store.dispatch('fetchViewExpenses', { monthYear });
-  }
 },
 
   currentBudget() {
@@ -566,6 +573,15 @@ updateExpenseView() {
     });
 },
     
+updateExpenseView() {
+  if (this.showYearFilter) {
+    this.$store.dispatch('fetchViewExpenses', { year: this.yearFilter });
+  } else {
+    const monthYear = `${this.selectedYear}-${this.selectedMonth}`;
+    this.$store.dispatch('fetchViewExpenses', { monthYear });
+  }
+},
+
     formatCurrency(value) {
       if (value == null || isNaN(value)) return '₱0.00';
       return '₱' + parseFloat(value).toFixed(2);
@@ -605,7 +621,6 @@ updateExpenseView() {
       periodText = `Period: ${monthName} ${this.selectedYear}`;
     }
       
-      // Add category filter info if not 'all'
       if (this.filterCategory && this.filterCategory !== 'All') {
         periodText += ` (${this.filterCategory} only)`;
       }
@@ -730,7 +745,7 @@ updateExpenseView() {
   background-color: #e6f4ea; /* soft green background */
   color: #2e5940; /* darker green text */
   border: 2px solid #2e5940;
-  padding: 10px 18px;
+  padding: 10px 100px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 15px;
