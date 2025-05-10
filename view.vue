@@ -54,16 +54,16 @@
           <button @click="filterExpenses('Healthcare')" :class="{ active: filterCategory === 'Healthcare' }">Healthcare</button>
           <button @click="filterExpenses('Shopping')" :class="{ active: filterCategory === 'Shopping' }">Shopping</button>
           <button @click="filterExpenses('Other')" :class="{ active: filterCategory === 'Other' }">Other</button>
-          <button @click="filterExpenses('all')" :class="{ active: filterCategory === 'all' }">View All</button>
+          <button @click="filterExpenses('All')" :class="{ active: filterCategory === 'All' }">View All</button>
         </div>
 
         <!-- Expense Table -->
         <div class="expense-table">
           <h3 v-if="!showYearFilter">Expenses for  {{ availableMonths.find(m => m.value === selectedMonth)?.label }} {{ selectedYear }}
-          <span class="category-label">&nbsp;({{ filterCategory === 'all' ? 'All Categories' : filterCategory }})</span>
+          <span class="category-label">&nbsp;({{ filterCategory === 'All' ? 'All Categories' : filterCategory }})</span>
         </h3>
           <h3 v-else>Expenses for  {{ yearFilter }}
-            <span class="category-label">&nbsp;({{ filterCategory === 'all' ? 'All Categories' : filterCategory }})</span>
+            <span class="category-label">&nbsp;({{ filterCategory === 'All' ? 'All Categories' : filterCategory }})</span>
         </h3>
           <table>
             <thead>
@@ -130,7 +130,7 @@
     </div>
     
     <div class="summary-item">
-  <span>{{ filterCategory === 'All' ? 'Expenses' : filterCategory + ' Expenses' }}:</span>
+  <span>{{ filterCategory === 'All' ? 'All Expenses' : filterCategory + ' Expenses' }}:</span>
   <span>{{ formatCurrency(yearlyExpensesByCategory) }}</span>
 </div>
     
@@ -156,7 +156,7 @@
     </div>
 
     <div class="summary-item">
-    <span>{{ filterCategory === 'All' ? 'Expenses' : filterCategory + ' Expenses' }}:</span>
+    <span>{{ filterCategory === 'All' ? 'All Expenses' : filterCategory + ' Expenses' }}:</span>
   <span>{{ formatCurrency(totalAmount) }}</span>
 </div>
 
@@ -179,7 +179,7 @@
 </div>
 
 <div v-if="showYearFilter && isYearlyBudgetExceeded" class="exceeded-warning">
-  ⚠️ Annual budget {{ filterCategory !== 'all' ? `(${filterCategory}) ` : '' }}exceeded by {{ formatCurrency(yearlyExpensesByCategory - yearlyBudgetsTotal) }}
+  ⚠️ Annual budget {{ filterCategory !== 'All' ? `(${filterCategory}) ` : '' }}exceeded by {{ formatCurrency(yearlyExpensesByCategory - yearlyBudgetsTotal) }}
 </div>
 </div>
 </template>
@@ -207,7 +207,7 @@ export default {
   data() {
     return {
       currentView: 'view', 
-      filterCategory: 'all', 
+      filterCategory: 'All', 
       filterMonth: '', 
       wasBudgetExceeded: false,
       selectedYear: new Date().getFullYear().toString(), 
@@ -215,46 +215,54 @@ export default {
       yearFilter: null, // Add this for year-only filtering
       showYearFilter: false,
       chartOptions: {
-        responsive: true,
-        plugins: {
-          datalabels: {
-            formatter: (value, context) => {
-              const dataset = context.chart.data.datasets[0].data;
-              const total = dataset.reduce((sum, val) => sum + val, 0);
-              if (value > 0) {
-                return (value / total * 100).toFixed(1) + '%';
-              }
-              return null; // This will hide the label for zero values
-            },
-            color: '#000',
-            font: {
-              weight: 'bold',
-              size: 12
-            },
-            anchor: 'center',
-            align: 'center',
-            offset: 0,
-            padding: 0
-          },
-          legend: {
-            position: 'top',
-          },
-          tooltip: {
-            callbacks: {
-              label: function (tooltipItem) {
-                return tooltipItem.label + ': ₱' + tooltipItem.raw.toFixed(2);
-              },
-            },
-          },
-        },
-        onClick: (event, elements) => {
-          if (elements.length > 0) {
-            const index = elements[0].index;
-            const month = this.availableMonths[index];
-            this.selectMonth(month.value);
-          }
+  responsive: true,
+  plugins: {
+    datalabels: {
+      formatter: (value, context) => {
+        const dataset = context.chart.data.datasets[0].data;
+        const total = dataset.reduce((sum, val) => sum + val, 0);
+        const percentage = (value / total * 100);
+        
+        if (percentage > 0) {
+          return percentage.toFixed(1) + '%';
         }
+        return null;
       },
+      color: '#000',
+      font: function(context) {
+        const dataset = context.chart.data.datasets[0].data;
+        const total = dataset.reduce((sum, val) => sum + val, 0);
+        const percentage = (dataset[context.dataIndex] / total * 100);
+        
+        return {
+          weight: 'bold',
+          size: percentage < 5 ? 10 : 12 // Smaller font for <5%
+        };
+      },
+      anchor: 'center',
+      align: 'center',
+      offset: 0,
+      padding: 0
+    },
+    legend: {
+      position: 'top',
+    },
+    tooltip: {
+      callbacks: {
+        label: function (tooltipItem) {
+          return tooltipItem.label + ': ₱' + tooltipItem.raw.toFixed(2);
+        },
+      },
+    },
+  },
+  onClick: (event, elements) => {
+    if (elements.length > 0) {
+      const index = elements[0].index;
+      const month = this.availableMonths[index];
+      this.selectMonth(month.value);
+    }
+  }
+},
     };
   },
 
@@ -265,7 +273,7 @@ export default {
   if (!this.showYearFilter || !this.yearFilter) return 0; 
   return this.getViewExpenses.reduce((sum, expense) => {
 
-    const matchesCategory = this.filterCategory === 'all' || 
+    const matchesCategory = this.filterCategory === 'All' || 
                           expense.expense_type === this.filterCategory;
     
     return matchesCategory ? sum + (Number(expense.item_price) || 0) : sum;
@@ -422,14 +430,12 @@ export default {
     filteredExpenses() {
   let expenses = this.getViewExpenses || [];
   
-  // Apply year filter if enabled
   if (this.showYearFilter && this.yearFilter) {
     expenses = expenses.filter(expense => {
       if (!expense.expense_date) return false;
       return new Date(expense.expense_date).getFullYear() == this.yearFilter;
     });
   } 
-  // Apply month filter if not in year view
   else {
     const currentBudget = this.$store.getters.getCurrentBudget(
       `${this.selectedYear}-${this.selectedMonth}`
@@ -442,9 +448,9 @@ export default {
     );
   }
 
-  if (this.filterCategory && this.filterCategory !== 'all') {
+  if (this.filterCategory && this.filterCategory !== 'All') {
     expenses = expenses.filter(expense => 
-      expense.expense_type.toLowerCase() === this.filterCategory.toLowerCase()
+      expense.expense_type === this.filterCategory
     );
   }
 
@@ -544,7 +550,7 @@ updateExpenseView() {
 
     selectMonth(month) {
       this.selectedMonth = month;
-      this.filterCategory = 'all';
+      this.filterCategory = 'All';
     },
 
     updateSelectedMonthYear() {
@@ -600,7 +606,7 @@ updateExpenseView() {
     }
       
       // Add category filter info if not 'all'
-      if (this.filterCategory && this.filterCategory !== 'all') {
+      if (this.filterCategory && this.filterCategory !== 'All') {
         periodText += ` (${this.filterCategory} only)`;
       }
       
