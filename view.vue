@@ -3,7 +3,7 @@
 
   <div class="con">
     <div class="nav-con">
-          <h1>Personal Expenses</h1>
+          <h1><i class="fa fa-coins"></i>  Personal Expenses</h1>
     </div>
     <div class="con-container">
 
@@ -142,9 +142,15 @@
   </div>
 
   <div class="progress-bar">
-    <div class="progress" :style="{ width: yearlyBudgetPercentageByCategory + '%' }"></div>
-  </div>
-  <div class="percentage">{{ yearlyBudgetPercentageByCategory.toFixed(0) }}%</div>
+    <div
+    class="progress"
+    :class="{ 'exceeded': isYearlyBudgetExceeded }"
+    :style="{ width: yearlyBudgetPercentageByCategory + '%' }"
+  ></div>
+</div>
+<div class="percentage" :class="{ 'exceeded-text': isYearlyBudgetExceeded }">
+  {{ yearlyBudgetPercentageByCategory.toFixed(0) }}%
+</div>
 </div>
 
       <!--MONTHLY-->
@@ -168,10 +174,16 @@
     </div>
 
     <div class="progress-bar">
-      <div class="progress" :style="{ width: budgetPercentage + '%' }"></div>
-    </div>
-    <div class="percentage">{{ budgetPercentage.toFixed(0) }}%</div>
-  </div>
+      <div 
+    class="progress" 
+    :class="{ 'exceeded': isBudgetExceeded }"
+    :style="{ width: budgetPercentage + '%' }"
+  ></div>
+</div>
+<div class="percentage" :class="{ 'exceeded-text': isBudgetExceeded }">
+  {{ budgetPercentage.toFixed(0) }}%
+</div>
+</div>
   </div>
 
 <div v-if="isBudgetExceeded && !showYearFilter" class="exceeded-warning">
@@ -223,10 +235,7 @@ export default {
         const total = dataset.reduce((sum, val) => sum + val, 0);
         const percentage = (value / total * 100);
         
-        if (percentage > 0) {
-          return percentage.toFixed(1) + '%';
-        }
-        return null;
+        return percentage >= 0.5 ? percentage.toFixed(1) + '%' : null;
       },
       color: '#000',
       font: function(context) {
@@ -234,14 +243,42 @@ export default {
         const total = dataset.reduce((sum, val) => sum + val, 0);
         const percentage = (dataset[context.dataIndex] / total * 100);
         
+        
+        let size = 12;
+        if (percentage <= 5) {
+          size = 10;
+        }
+
         return {
           weight: 'bold',
-          size: percentage < 5 ? 10 : 12 // Smaller font for <5%
+          size: size
         };
       },
-      anchor: 'center',
-      align: 'center',
-      offset: 0,
+      align: function(context) {
+  const dataset = context.chart.data.datasets[0].data;
+  const total = dataset.reduce((sum, val) => sum + val, 0);
+  const value = dataset[context.dataIndex];
+  const percentage = (value / total) * 100;
+
+  // Move small labels outside
+  return percentage <= 1 ? 'end' : 'center';
+},
+anchor: function(context) {
+  const dataset = context.chart.data.datasets[0].data;
+  const total = dataset.reduce((sum, val) => sum + val, 0);
+  const value = dataset[context.dataIndex];
+  const percentage = (value / total) * 100;
+
+  return percentage <= 1 ? 'end' : 'center';
+},
+offset: function(context) {
+  const dataset = context.chart.data.datasets[0].data;
+  const total = dataset.reduce((sum, val) => sum + val, 0);
+  const value = dataset[context.dataIndex];
+  const percentage = (value / total) * 100;
+
+  return percentage <= 1 ? 10 : 0; // Add space for small slices
+},
       padding: 0
     },
     legend: {
@@ -265,7 +302,6 @@ export default {
 },
     };
   },
-
   computed: {
     ...mapGetters(['getViewExpenses', 'getPersonalBudgets', 'getViewPageMonthYear']),
     
@@ -327,7 +363,6 @@ export default {
     }, 0);
   },
 
-  // Calculate remaining budget for the year
   yearlyRemainingBudget() {
     return this.yearlyBudgetsTotal - this.yearlyExpensesTotal;
   },
@@ -625,8 +660,7 @@ updateExpenseView() {
     async generatePDF() {
   try {
     const doc = new jsPDF();
-    this.formatCurrency = value => `PHP ${parseFloat(value||0).toFixed(2)}`;
-    
+    const formatCurrencyForPDF = value => `PHP ${parseFloat(value||0).toFixed(2)}`;
     // Title 
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
@@ -647,20 +681,68 @@ updateExpenseView() {
       
       doc.text(periodText, 105, 30, { align: 'center' });
     
-    // Budget summary
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    if (this.showYearFilter) {
-      // Year view summary
-      doc.text(`Total Budget: ${this.formatCurrency(this.yearlyBudgetsTotal)}`, 20, 45);
-      doc.text(`Total Expenses: ${this.formatCurrency(this.yearlyExpensesTotal)}`, 165, 45, { align: 'center' });
-      doc.text(`Remaining: ${this.formatCurrency(this.yearlyRemainingBudget)}`, 128, 55, { align: 'right' });
-    } else {
-      // Month view summary
-      doc.text(`Budget: ${this.formatCurrency(this.currentBudget?.budget_amount || 0)}`, 20, 45);
-      doc.text(`Total Expenses: ${this.formatCurrency(this.totalAmount)}`, 165, 45, { align: 'center' });
-      doc.text(`Remaining: ${this.formatCurrency(this.remainingBudget)}`, 128, 55, { align: 'right' });
+    // Budget summary table
+    const remainingBudget = this.showYearFilter ? this.yearlyRemainingBudget : this.remainingBudget;
+    if (remainingBudget < 0) {
+      const exceededAmount = Math.abs(remainingBudget);
+      doc.setFontSize(12);
+      doc.setTextColor(255, 0, 0); // Red color for warning
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Budget Exceeded by ${formatCurrencyForPDF(exceededAmount)}`, 105, 40, { align: 'center' });
+      doc.setTextColor(0, 0, 0); // Reset to black
     }
+    
+    // Budget Summary Section
+    doc.setFontSize(14);
+    doc.text('Budget Summary', doc.internal.pageSize.getWidth() / 2, 45 + (remainingBudget < 0 ? 10 : 0), { 
+      align: 'center' 
+    });
+    
+    // Get budget data based on view mode
+    const totalBudget = this.showYearFilter ? this.yearlyBudgetsTotal : (this.currentBudget?.budget_amount || 0);
+    const totalExpenses = this.showYearFilter ? this.yearlyExpensesTotal : this.totalAmount;
+    
+    // Budget Summary Table
+    autoTable(doc, {
+      startY: 50 + (remainingBudget < 0 ? 10 : 0),
+      head: [['Metric', 'Amount']],
+      body: [
+        ['Total Budget', formatCurrencyForPDF(totalBudget)],
+        ['Total Expenses', formatCurrencyForPDF(totalExpenses)],
+        ['Remaining Budget', formatCurrencyForPDF(remainingBudget)]
+      ],
+      margin: { left: 10, right: 10, bottom: 20, top: 20 },
+      tableWidth: 'wrap',
+      horizontalAlign: 'center',
+      styles: {
+        cellPadding: 4,
+        fontSize: 10,
+        halign: 'center',
+        lineColor: [73, 125, 116],
+        valign: 'middle'
+      },
+      columnStyles: {
+        0: { cellWidth: 95, fontStyle: 'bold' },
+        1: { cellWidth: 95 }
+      },
+      headStyles: {
+        fillColor: [73, 125, 116],
+        textColor: 255,
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+
+      didDrawCell: (data) => {
+        if (data.section === 'body' && data.row.index === 2 && remainingBudget < 0) {
+          doc.setFillColor(255, 200, 200); // Light red background
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          doc.setTextColor(255, 0, 0); // Red text
+          doc.text(data.cell.text, data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 2, {
+            align: 'center'
+          });
+        }
+      }
+    });
     
     const pdfExpenses = this.filteredExpenses;
     
@@ -669,21 +751,22 @@ updateExpenseView() {
       expense.date,
       expense.category,
       expense.name,
-      this.formatCurrency(expense.amount)
+      formatCurrencyForPDF(expense.amount)
     ]);
     
     // Add expense table
     autoTable(doc, {
-  head: [['Date', 'Category', 'Description', 'Amount']],
+  head: [['Date', 'Category', 'Item Name', 'Amount']],
   body: tableData,
-  startY: 70, 
+  startY: 120, 
   margin: { left: 10, right: 10 },
   styles: {
     cellPadding: 4, 
     fontSize: 9,
     halign: 'left',
     valign: 'middle',
-    overflow: 'linebreak'
+    overflow: 'linebreak',
+    lineColor: 	[159, 82, 85]
   },
   columnStyles: {
     0: { cellWidth: 60 }, // Date
@@ -697,7 +780,7 @@ updateExpenseView() {
     }
   },
   headStyles: {
-    fillColor: [76, 175, 80],
+    fillColor: [159, 82, 85],
     textColor: 255,
     fontStyle: 'bold'
   }
@@ -717,6 +800,13 @@ updateExpenseView() {
       }
     } catch (chartError) {
       console.error('Error adding chart:', chartError);
+    }
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(10);
+      doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 10);
     }
     
     doc.save(`expense-report-${this.selectedYear}-${this.selectedMonth}.pdf`);
@@ -904,12 +994,15 @@ updateExpenseView() {
 }
 .progress {
   height: 100%;
-  background: linear-gradient(90deg, #4CAF50, #8BC34A);
   transition: width 0.3s ease;
 }
 
+.progress-bar .progress.exceeded {
+  background: #bb2318 !important;
+}
+
 .progress-bar .progress {
-  background: linear-gradient(90deg, #4CAF50, #8BC34A);
+  background: linear-gradient(135deg, #7aa98c, #5e8873, #486858);
 }
 
 .percentage {
